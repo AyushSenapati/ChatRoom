@@ -9,6 +9,8 @@ import time
 
 class Server():
     def __init__(self):
+        self.TERMINATE = False
+        self.cli_hash = {}
         self.HOST_IP = '0.0.0.0'
         self.HOST_PORT = '8080'
         self.MAX_USR_ACCPT = '100'
@@ -60,30 +62,74 @@ class Server():
             self.MAX_USR_ACCPT = input('Enter max number of users server would accept : ')
 
     def srv_prompt(self):
-        OPT = input('\nenter command $ ')
-        if OPT == '\h':
-            self.show_help()
-        elif OPT == '\sd':
-            self.show_config(type_='default')
-        elif OPT == '\sc':
-            self.show_config(type_='active')
-        elif OPT == '\sf':
-            print('WARNING: All users will be disconnected with out any notification!!')
-            OPT = input('Do you really want to close server?[Y/N] ')
-            if OPT == 'Y':
-                print('Shuting down server...')
-                time.sleep(0.5)
-                print('Done.')
-                sys.exit()
+        while True:
+            OPT = input('\nenter command $ ')
+            if OPT == '\h':
+                self.show_help()
+            elif OPT == '\sd':
+                self.show_config(type_='default')
+            elif OPT == '\sc':
+                self.show_config(type_='active')
+            elif OPT == '\sf':
+                print('WARNING: All users will be disconnected with out any notification!!')
+                OPT = input('Do you really want to close server?[Y/N] ')
+                if OPT == 'Y':
+                    print('Shuting down server...')
+                    self.TERMINATE = True
+                    time.sleep(0.5)
+                    print('Done.')
+                    sys.exit()
+                else:
+                    print('Aborted.')
+            elif OPT == '\sg':
+                pass
             else:
-                print('Aborted.')
-        elif OPT == '\sg':
-            pass
-        else:
-            print('COMMAND NOT FOUND!!')
+                print('COMMAND NOT FOUND!!')
+
+    def init_clients(self):
+        """ Accepts connection requests from clients and stores
+        two parameters- 'conn' which is a socket object for that user,
+        and 'addr' which contains the IP address of the client
+        that just connected to the server.
+        """
+        while True:
+            # Break the loop and stop accepting connections
+            # from the clients, when terminate command is entered 
+            # in the server prompt.
+            if self.TERMINATE:
+                break
+
+            # Accept connections from the clients.
+            conn, addr = self.server.accept()
+    
+            # Instantiate individual Client thread object
+            # to do client related stuffs.
+            cli_thread_obj = Client(conn, addr)
+            
+            # Maintain a hash table for client thread objects,
+            # where keys will be connection object and values will
+            # be client thread object.
+            self.cli_hash[conn] = cli_thread_obj
+
+            #threading._start_new_thread(client.clientthread)
+        # Wait for all client threads to exit their process
+        try:
+            # TODO Broadcast connection termination request
+            # when the server is going to shutdown.
+            # Upon receiving connection termination request, all
+            # connected client applications must wait for 5 seconds
+            # for the users to close their applications, before
+            # terminating connections automatically.
+            print('Wating for all clients to terminate their connections...')
+            for cli_thread in self.cli_hash.values():
+                cli_thread.join()
+        except:
+            print('No client is connected to the server.')
 
     def init(self):
-        # Initialize server
+        """
+        Initializes the server application as per user inputs.
+        """
         if len(sys.argv) == 1:
             self.show_config(type_='default')
             OPT = input('Set these default config?[Y/n] ')
@@ -103,13 +149,13 @@ class Server():
         SOCK_STREAM means that data or characters are read in
         a continuous flow."""
     
-        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     
         try:
             # Try to create server socket
-            server.bind((self.HOST_IP, int(self.HOST_PORT)))
-            server.listen(int(self.MAX_USR_ACCPT))
+            self.server.bind((self.HOST_IP, int(self.HOST_PORT)))
+            self.server.listen(int(self.MAX_USR_ACCPT))
         except:
             print('Unable to bind HOST IP and PORT.\nPlease check your configuration')            
             sys.exit('EMERGENCY')
@@ -120,38 +166,35 @@ class Server():
         will be resposible for handling server input and thread_cli will be
         responsible for handling users. """
 
-        # thread_srv = 
-        # thread_cli =
+        thread_srv = threading.Thread(target=self.srv_prompt, args=())
+        thread_cli = threading.Thread(target=self.init_clients, args=())
 
-        while True:
-
-            """ Accepts a connection request and stores two parameters,
-            conn which is a socket object for that user, and addr
-            which contains the IP address of the client that just
-            connected """
-            conn, addr = server.accept()
-    
-            # Instantiate Client object to do client related stuffs
-            client = Client(conn, addr)
-            
-            # Create individual thread for new connected user
-            threading._start_new_thread(client.clientthread)
+        thread_srv.start() # Start a thread for server prompt
+        thread_cli.start() # Start a thread to listening clients reqests
+        
+        for thread in (thread_srv, thread_cli):
+            thread.join()
+        print('Server and Client threads are exited.')
 
 
 class Client(Server):
     def __init__(self, conn, addr):
+        threading.Thread.__init__(self)
         self.conn = conn
         self.addr = addr
-        self.client_hash = {}
 
     def clientthread(self):
         _userName = self.conn.recv(100).decode()
-        _userPasswd = self.conn.recv(100).decode()
+        #_userPasswd = self.conn.recv(100).decode()
         
-        ''' Maintains a hash table containing connection obj and
-        associated user account to ease broadcasting messages,
-        online and offline detection, logging user activity. '''
-        self.client_hash[self.conn] = (accnt)
+        # TODO: Log client has been connected and and add
+        #       broadcast method to broadcast this info.
+
+    def broadcast(self):
+        pass
+
+    def remove(self):
+        pass
 
 if __name__ == "__main__":
     try:
@@ -165,7 +208,7 @@ if __name__ == "__main__":
             #print(sys.exc_info())
             print('Something went wrong!!\nPlease contact developers.')
             os._exit(1)
-    except:
-        print('Something went wrong!!\nPlease contact developers\nTerminating the process forcefully..')
-        time.sleep(1)
-        os._exit(1)
+    #except:
+    #    print('Something went wrong!!\nPlease contact developers\nTerminating the process forcefully..')
+    #    time.sleep(1)
+    #    os._exit(1)
