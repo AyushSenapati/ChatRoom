@@ -208,7 +208,7 @@ if __name__ == "__main__":
             #print(sys.exc_info())
             print('Something went wrong!!\nPlease contact developers.')
             os._exit(1)
-    #except:
-    #    print('Something went wrong!!\nPlease contact developers\nTerminating the process forcefully..')
-    #    time.sleep(1)
-    #    os._exit(1)
+    except:
+        print('Something went wrong!!\nPlease contact developers\nTerminating the process forcefully..')
+        time.sleep(1)
+        os._exit(1)
