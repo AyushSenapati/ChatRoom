@@ -1,5 +1,5 @@
-__author__ = 'Ayush Prakash Senapati <a.p.senapati008@gmail.com>'
 #! /usr/bin/env python3
+__author__ = 'Ayush Prakash Senapati <a.p.senapati008@gmail.com>'
 
 import os
 import sys
@@ -8,9 +8,12 @@ import select
 import threading
 import time
 
+# Set program Terminate flag
+TERMINATE = False
+
+
 class Server():
     def __init__(self):
-        self.TERMINATE = False
         self.cli_hash = {}
         self.HOST_IP = '0.0.0.0'
         self.HOST_PORT = '8080'
@@ -63,6 +66,7 @@ class Server():
             self.MAX_USR_ACCPT = input('Enter max number of users server would accept : ')
 
     def srv_prompt(self):
+        global TERMINATE
         while True:
             OPT = input('\nenter command $ ')
             if OPT == '\h':
@@ -76,10 +80,8 @@ class Server():
                 OPT = input('Do you really want to close server?[Y/N] ')
                 if OPT == 'Y':
                     print('Shuting down server...')
-                    self.TERMINATE = True
-                    time.sleep(0.5)
-                    print('Done.')
-                    sys.exit()
+                    TERMINATE = True
+                    sys.exit(0)
                 else:
                     print('Aborted.')
             elif OPT == '\sg':
@@ -93,24 +95,29 @@ class Server():
         and 'addr' which contains the IP address of the client
         that just connected to the server.
         """
-        while True:
-            # Break the loop and stop accepting connections
-            # from the clients, when terminate command is entered 
-            # in the server prompt.
-            if self.TERMINATE:
-                break
+        # Break the loop and stop accepting connections
+        # from the clients, when terminate command is entered 
+        # in the server prompt.
+        while not TERMINATE:
+            try:
+                # Timeout for listening
+                self.server.settimeout(1)  
 
-            # Accept connections from the clients.
-            conn, addr = self.server.accept()
-    
-            # Instantiate individual Client thread object
-            # to do client related stuffs.
-            cli_thread_obj = Client(conn, addr)
+                # Accept connections from the clients.
+                conn, addr = self.server.accept()
+            except socket.timeout:
+                pass
+            except Exception as e:
+                raise e
+            else:
+                # Instantiate individual Client thread object
+                # to do client related stuffs.
+                cli_thread_obj = Client(conn, addr)
             
-            # Maintain a hash table for client thread objects,
-            # where keys will be connection object and values will
-            # be client thread object.
-            self.cli_hash[conn] = cli_thread_obj
+                # Maintain a hash table for client thread objects,
+                # where keys will be connection object and values will
+                # be client thread object.
+                self.cli_hash[conn] = cli_thread_obj
 
             #threading._start_new_thread(client.clientthread)
         # Wait for all client threads to exit their process
@@ -121,11 +128,10 @@ class Server():
             # connected client applications must wait for 5 seconds
             # for the users to close their applications, before
             # terminating connections automatically.
-            print('Wating for all clients to terminate their connections...')
-            for cli_thread in self.cli_hash.values():
-                cli_thread.join()
+            print('Server has stopped listening on opened socket.')
+            print('Broadcasting connection termination signal..')
         except:
-            print('No client is connected to the server.')
+            pass
 
     def init(self):
         """
