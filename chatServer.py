@@ -7,10 +7,14 @@ import socket
 import select
 import threading
 import time
+from datetime import datetime
+
+# Local modules
+from APIs.logging import Log
 
 # Set program Terminate flag
 TERMINATE = False
-
+CLI_HASH = {}
 
 class Server():
     def __init__(self):
@@ -18,6 +22,7 @@ class Server():
         self.HOST_IP = '0.0.0.0'
         self.HOST_PORT = '8080'
         self.MAX_USR_ACCPT = '100'
+        logging.log('Initializing server')
         self.init()
 
     def show_help(self):
@@ -40,6 +45,7 @@ class Server():
             HOST IP = ''' + self.HOST_IP + '''
             HOST PORT = ''' + self.HOST_PORT + '''
             MAX USER ALLOWED = ''' + self.MAX_USR_ACCPT 
+            logging.log('Showing Active server configuration')
             print(msg)
         else:
             msg = '''
@@ -79,10 +85,12 @@ class Server():
                 print('WARNING: All users will be disconnected with out any notification!!')
                 OPT = input('Do you really want to close server?[Y/N] ')
                 if OPT == 'Y':
+                    logging.log('Shuting down server...')
                     print('Shuting down server...')
                     TERMINATE = True
                     sys.exit(0)
                 else:
+                    logging.log('Aborted.')
                     print('Aborted.')
             elif OPT == '\sg':
                 pass
@@ -95,11 +103,13 @@ class Server():
         and 'addr' which contains the IP address of the client
         that just connected to the server.
         """
+        global CLI_HASH
         # Break the loop and stop accepting connections
         # from the clients, when terminate command is entered 
         # in the server prompt.
         while not TERMINATE:
             try:
+                logging.log(CLI_HASH)
                 # Timeout for listening
                 self.server.settimeout(1)  
 
@@ -110,16 +120,19 @@ class Server():
             except Exception as e:
                 raise e
             else:
+                logging.log('No exception occured')
                 # Instantiate individual Client thread object
                 # to do client related stuffs.
-                cli_thread_obj = Client(conn, addr)
+                cli_thread_obj = Client(conn, addr, self)
             
                 # Maintain a hash table for client thread objects,
                 # where keys will be connection object and values will
                 # be client thread object.
-                self.cli_hash[conn] = cli_thread_obj
+                #self.cli_hash[conn] = cli_thread_obj
+                CLI_HASH[conn] = cli_thread_obj
+                #cli_thread_obj.run()
 
-            #threading._start_new_thread(client.clientthread)
+                threading._start_new_thread(cli_thread_obj.run, ('',))
         # Wait for all client threads to exit their process
         try:
             # TODO Broadcast connection termination request
@@ -185,27 +198,75 @@ class Server():
 
 
 class Client(Server):
-    def __init__(self, conn, addr):
+    def __init__(self, conn, addr, srv_obj):
         threading.Thread.__init__(self)
+        #super(Client, self).__init__()
+        self.srv_obj = srv_obj
         self.conn = conn
         self.addr = addr
+        #logging.log(CLI_HASH)
+        #self.clientthread()
 
-    def clientthread(self):
+    #def clientthread(self):
+    def run(self, *args):
         _userName = self.conn.recv(100).decode()
         #_userPasswd = self.conn.recv(100).decode()
         
         # TODO: Log client has been connected and and add
-        #       broadcast method to broadcast this info.
+        self.broadcast("\n" + _userName + " has joined the chatroom.", self.conn)
+        
+        # sends a message to the client whose user object is conn
+        msg_send = "Welcome [" + _userName + "] to this chatroom!"
+        self.conn.send(msg_send.encode())
+        logging.log('welcome msg sent to user ' + _userName)
 
-    def broadcast(self):
-        pass
+        while True:
+            try:
+                msg = self.conn.recv(2048).decode()
+                if msg:
+                    # print the msg sent by user
+                    log_msg = "<" + _userName + "@" + self.addr[0] + "> " + msg
+                    logging.log(log_msg)
+
+                    # Call broadcast method to relay message to connected users
+                    msg_send = "<" + _userName + "@" + self.addr[0] + "> " + msg
+                    self.broadcast(msg_send, self.conn)
+                else:
+                    # msg may have no content if the connection
+                    # is broken, in that case remove the connection
+                    self.remove()
+            except:
+                logging.log('exception occured for user ' + _userName)
+                self.remove()
+
+    def broadcast(self, msg, conn):
+        #for cli_socket in sorted(self.srv_obj.cli_hash.keys()):
+        for cli_socket in CLI_HASH.keys():
+            if cli_socket != self.conn:
+                try:
+                    cli_socket.send(msg.encode())
+                except:
+                    cli_socket.close()
+                    # If the link is broken, remove the client
+                    self.remove(cli_socket)
 
     def remove(self):
-        pass
+        #if conn in sorted(self.srv_obj.cli_hash.keys()):
+        if self.conn in CLI_HASH.keys():
+            #msg = "\n" + str(self.srv_obj.cli_hash[conn]) + " went offline!"
+            msg = "\n" + str(CLI_HASH[self.conn]) + " went offline!"
+            self.broadcast(msg, self.conn)
+            #self.srv_obj.cli_hash.pop(conn)
+            CLI_HASH.pop(self.conn)
+            #print(self.srv_obj.cli_hash.values)
+            logging.log(CLI_HASH.values)
 
 if __name__ == "__main__":
     try:
         # Call main function if the program is running as active program.
+        logging = Log(f_name='server_chatroom_' + datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+        logging.logging_flag = True
+        logging.validate_file()
         server = Server()
     except SystemExit as e:
         if e.code != 'EMERGENCY':
