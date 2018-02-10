@@ -71,6 +71,11 @@ class Server():
             self.HOST_PORT = input('Enter host PORT : ')
             self.MAX_USR_ACCPT = input('Enter max number of users server would accept : ')
 
+    def update_active_users(self):
+        self.user_list = []
+        for cli_obj in CLI_HASH.values():
+            self.user_list.append(cli_obj.userName)
+
     def srv_prompt(self):
         global TERMINATE
         while True:
@@ -81,6 +86,10 @@ class Server():
                 self.show_config(type_='default')
             elif OPT == '\sc':
                 self.show_config(type_='active')
+            elif OPT == '\sau':
+                self.update_active_users()
+                logging.log(self.user_list)
+                print(self.user_list)
             elif OPT == '\sf':
                 print('WARNING: All users will be disconnected with out any notification!!')
                 OPT = input('Do you really want to close server?[Y/N] ')
@@ -93,6 +102,8 @@ class Server():
                     logging.log('Aborted.')
                     print('Aborted.')
             elif OPT == '\sg':
+                pass
+            elif OPT == '':
                 pass
             else:
                 print('COMMAND NOT FOUND!!')
@@ -109,7 +120,7 @@ class Server():
         # in the server prompt.
         while not TERMINATE:
             try:
-                logging.log(CLI_HASH)
+                # logging.log(CLI_HASH)
                 # Timeout for listening
                 self.server.settimeout(1)  
 
@@ -123,16 +134,15 @@ class Server():
                 logging.log('No exception occured')
                 # Instantiate individual Client thread object
                 # to do client related stuffs.
-                cli_thread_obj = Client(conn, addr, self)
+                cli_obj = Client(conn, addr, self)
             
                 # Maintain a hash table for client thread objects,
                 # where keys will be connection object and values will
                 # be client thread object.
-                #self.cli_hash[conn] = cli_thread_obj
-                CLI_HASH[conn] = cli_thread_obj
+                CLI_HASH[conn] = cli_obj
                 #cli_thread_obj.run()
 
-                threading._start_new_thread(cli_thread_obj.run, ('',))
+                threading._start_new_thread(cli_obj.run, ('',))
         # Wait for all client threads to exit their process
         try:
             # TODO Broadcast connection termination request
@@ -199,48 +209,50 @@ class Server():
 
 class Client(Server):
     def __init__(self, conn, addr, srv_obj):
-        threading.Thread.__init__(self)
-        #super(Client, self).__init__()
         self.srv_obj = srv_obj
         self.conn = conn
         self.addr = addr
-        #logging.log(CLI_HASH)
-        #self.clientthread()
+        self.userName = '-N/A-'
 
-    #def clientthread(self):
     def run(self, *args):
-        _userName = self.conn.recv(100).decode()
+        self.userName = self.conn.recv(100).decode()
         #_userPasswd = self.conn.recv(100).decode()
         
-        # TODO: Log client has been connected and and add
-        self.broadcast("\n" + _userName + " has joined the chatroom.", self.conn)
+        # TODO: Log client has been connected
+        self.broadcast("\n" + self.userName + " has joined the chatroom.")
         
         # sends a message to the client whose user object is conn
-        msg_send = "Welcome [" + _userName + "] to this chatroom!"
+        msg_send = "Welcome [" + self.userName + "] to this chatroom!"
         self.conn.send(msg_send.encode())
-        logging.log('welcome msg sent to user ' + _userName)
+        logging.log('welcome msg sent to user ' + self.userName)
 
         while True:
             try:
+                _loop_break_flag = False
                 msg = self.conn.recv(2048).decode()
-                if msg:
-                    # print the msg sent by user
-                    log_msg = "<" + _userName + "@" + self.addr[0] + "> " + msg
-                    logging.log(log_msg)
-
-                    # Call broadcast method to relay message to connected users
-                    msg_send = "<" + _userName + "@" + self.addr[0] + "> " + msg
-                    self.broadcast(msg_send, self.conn)
-                else:
-                    # msg may have no content if the connection
-                    # is broken, in that case remove the connection
-                    self.remove()
-            except:
-                logging.log('exception occured for user ' + _userName)
+                if msg == '@getonline':
+                    _loop_break_flag = True
+                    self.srv_obj.update_active_users()
+                    self.conn.send(str(self.srv_obj.user_list).encode())
+                if not _loop_break_flag:
+                    if msg:
+                        # print the msg sent by user
+                        log_msg = "<" + self.userName + "@" + self.addr[0] + "> " + msg
+                        logging.log(msg_type='CHAT', msg=log_msg)
+    
+                        # Call broadcast method to relay message to connected users
+                        msg_send = "<" + self.userName + "@" + self.addr[0] + "> " + msg
+                        self.broadcast(msg_send)
+                    else:
+                        # msg may have no content if the connection
+                        # is broken, in that case remove the connection
+                        self.remove()
+            except Exception as e:
+                raise e
+                logging.log('exception occured for user ' + self.userName)
                 self.remove()
 
-    def broadcast(self, msg, conn):
-        #for cli_socket in sorted(self.srv_obj.cli_hash.keys()):
+    def broadcast(self, msg):
         for cli_socket in CLI_HASH.keys():
             if cli_socket != self.conn:
                 try:
@@ -248,18 +260,13 @@ class Client(Server):
                 except:
                     cli_socket.close()
                     # If the link is broken, remove the client
-                    self.remove(cli_socket)
+                    self.remove()
 
     def remove(self):
-        #if conn in sorted(self.srv_obj.cli_hash.keys()):
         if self.conn in CLI_HASH.keys():
-            #msg = "\n" + str(self.srv_obj.cli_hash[conn]) + " went offline!"
-            msg = "\n" + str(CLI_HASH[self.conn]) + " went offline!"
-            self.broadcast(msg, self.conn)
-            #self.srv_obj.cli_hash.pop(conn)
+            msg = "\n" + str(CLI_HASH[self.conn].userName) + " went offline!"
+            self.broadcast(msg)
             CLI_HASH.pop(self.conn)
-            #print(self.srv_obj.cli_hash.values)
-            logging.log(CLI_HASH.values)
 
 if __name__ == "__main__":
     try:
