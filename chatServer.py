@@ -5,6 +5,7 @@ import os
 import sys
 import socket
 import select
+import signal
 import threading
 import time
 from datetime import datetime
@@ -28,14 +29,15 @@ class Server():
     def show_help(self):
         msg = '''
         AVAILABLE COMMANDS:
-        \h      Print these information
-        \d      Set default configuration
-        \sd     Show default configuration
-        \sc     Show current configuration
-        \sau    Show active users
-        \sac    Show active chat rooms
-        \sf     Shutdown server forcefully
-        \sg     Shutdown server gracefully [Recommended]'''
+        \h          Print these information
+        \d          Set default configuration
+        \sd         Show default configuration
+        \sc         Show current configuration
+        \sau        Show active users
+        \sac        Show active chat rooms
+        \sf         Shutdown server forcefully
+        \sg         Shutdown server gracefully [Recommended]
+        \monitor    Enables monitor mode'''
         print(msg)
 
     def show_config(self, type_='default'):
@@ -76,12 +78,22 @@ class Server():
         for cli_obj in CLI_HASH.values():
             self.user_list.append(cli_obj.userName)
 
+    def signal_handler(self, signal, frame):
+        print(' has been pressed.\n')
+
     def srv_prompt(self):
         global TERMINATE
         while True:
             OPT = input('\nenter command $ ')
             if OPT == '\h':
                 self.show_help()
+            elif OPT == '\monitor':
+                print('Monitoring mode ENABLED!')
+                logging.silent_flag = False
+                signal.signal(signal.SIGINT, self.signal_handler)
+                signal.pause()
+                print('Monitoring mode DISABLED')
+                logging.silent_flag = True
             elif OPT == '\sd':
                 self.show_config(type_='default')
             elif OPT == '\sc':
@@ -196,27 +208,33 @@ class Server():
         will be resposible for handling server input and thread_cli will be
         responsible for handling users. """
 
-        thread_srv = threading.Thread(target=self.srv_prompt, args=())
+        #thread_srv = threading.Thread(target=self.srv_prompt, args=())
         thread_cli = threading.Thread(target=self.init_clients, args=())
 
-        thread_srv.start() # Start a thread for server prompt
+        #thread_srv.start() # Start a thread for server prompt
         thread_cli.start() # Start a thread to listening clients reqests
+        self.srv_prompt()
         
         for thread in (thread_srv, thread_cli):
             thread.join()
         print('Server and Client threads are exited.')
 
 
-class Client(Server):
+class Client():
     def __init__(self, conn, addr, srv_obj):
         self.srv_obj = srv_obj
         self.conn = conn
         self.addr = addr
         self.userName = '-N/A-'
 
+    def validate_user(self):
+        pass
+
     def run(self, *args):
         self.userName = self.conn.recv(100).decode()
         #_userPasswd = self.conn.recv(100).decode()
+
+        self.validate_user()
         
         # TODO: Log client has been connected
         self.broadcast("\n" + self.userName + " has joined the chatroom.")
@@ -248,8 +266,8 @@ class Client(Server):
                         # is broken, in that case remove the connection
                         self.remove()
             except Exception as e:
-                raise e
                 logging.log('exception occured for user ' + self.userName)
+                logging.log(msg_type='EXCEPTION', msg=e)
                 self.remove()
 
     def broadcast(self, msg):
@@ -273,6 +291,7 @@ if __name__ == "__main__":
         # Call main function if the program is running as active program.
         logging = Log(f_name='server_chatroom_' + datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
         logging.logging_flag = True
+        logging.silent_flag = True
         logging.validate_file()
         server = Server()
     except SystemExit as e:
