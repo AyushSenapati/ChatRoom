@@ -23,8 +23,6 @@ class Server():
         self.HOST_IP = '0.0.0.0'
         self.HOST_PORT = '8080'
         self.MAX_USR_ACCPT = '100'
-        logging.log('Initializing server')
-        self.init()
 
     def show_help(self):
         msg = '''
@@ -172,6 +170,7 @@ class Server():
         """
         Initializes the server application as per user inputs.
         """
+        logging.log('Initializing server')
         if len(sys.argv) == 1:
             self.show_config(type_='default')
             OPT = input('Set these default config?[Y/n] ')
@@ -230,47 +229,70 @@ class Client():
     def validate_user(self):
         pass
 
+    def features(self, msg):
+        # Feature-1: User can get online users list
+        if msg == '@getonline':
+            self._loop_break_flag = True
+            self.conn.send(str(self.srv_obj.user_list).encode())
+
+        # Feature-2: User can send msg to individual user
+        if msg.split()[0][1:] in self.srv_obj.user_list:
+            self._loop_break_flag = True
+            for _conn in CLI_HASH:
+                if CLI_HASH[_conn].userName == msg.split()[0][1:]:
+                    try:
+                        self.IND_SOCK = _conn
+                        msg_send = "<" + self.userName + "@" + self.addr[0] + "> " +\
+                                '[IND] ' + ' '.join(msg.split()[1:])
+                        self.broadcast(msg_send, IND_FLAG=True)
+                    except Exception as e:
+                        logging.log(msg_type='EXCEPTION', msg=e)
+
     def run(self, *args):
         self.userName = self.conn.recv(100).decode()
         #_userPasswd = self.conn.recv(100).decode()
 
         self.validate_user()
         
-        # TODO: Log client has been connected
-        self.broadcast("\n" + self.userName + " has joined the chatroom.")
+        msg = self.userName + " has joined the chatroom."
+        logging.log(msg)
+        self.broadcast("\n" + msg)
         
         # sends a message to the client whose user object is conn
         msg_send = "Welcome [" + self.userName + "] to this chatroom!"
         self.conn.send(msg_send.encode())
-        logging.log('welcome msg sent to user ' + self.userName)
 
         while True:
             try:
-                _loop_break_flag = False
+                self._loop_break_flag = False
                 msg = self.conn.recv(2048).decode()
-                if msg == '@getonline':
-                    _loop_break_flag = True
-                    self.srv_obj.update_active_users()
-                    self.conn.send(str(self.srv_obj.user_list).encode())
-                if not _loop_break_flag:
-                    if msg:
+
+                if msg:
+                    if msg.split()[0][0] == '@':
+                        self.srv_obj.update_active_users()
+                        self.features(msg)
+
+                    if not self._loop_break_flag:
                         # print the msg sent by user
                         log_msg = "<" + self.userName + "@" + self.addr[0] + "> " + msg
                         logging.log(msg_type='CHAT', msg=log_msg)
-    
+
                         # Call broadcast method to relay message to connected users
                         msg_send = "<" + self.userName + "@" + self.addr[0] + "> " + msg
                         self.broadcast(msg_send)
-                    else:
-                        # msg may have no content if the connection
-                        # is broken, in that case remove the connection
-                        self.remove()
+                else:
+                    # msg may have no content if the connection
+                    # is broken, in that case remove the connection
+                    self.remove()
             except Exception as e:
                 logging.log('exception occured for user ' + self.userName)
                 logging.log(msg_type='EXCEPTION', msg=e)
                 self.remove()
 
-    def broadcast(self, msg):
+    def broadcast(self, msg, IND_FLAG=False):
+        if IND_FLAG:
+            self.IND_SOCK.send(msg.encode())
+            return
         for cli_socket in CLI_HASH.keys():
             if cli_socket != self.conn:
                 try:
@@ -282,9 +304,12 @@ class Client():
 
     def remove(self):
         if self.conn in CLI_HASH.keys():
-            msg = "\n" + str(CLI_HASH[self.conn].userName) + " went offline!"
+            msg = str(CLI_HASH[self.conn].userName) + " went offline!"
+            logging.log(msg)
+            msg = "\n" + msg 
             self.broadcast(msg)
             CLI_HASH.pop(self.conn)
+            sys.exit()
 
 if __name__ == "__main__":
     try:
@@ -294,6 +319,7 @@ if __name__ == "__main__":
         logging.silent_flag = True
         logging.validate_file()
         server = Server()
+        server.init()
     except SystemExit as e:
         if e.code != 'EMERGENCY':
             # Normal exit, let unittest catch it
