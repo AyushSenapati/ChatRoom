@@ -1,37 +1,13 @@
-## Welcome to GitHub Pages
+# ChatRoom
+As the name suggests, it is a chatting application, built using Python3.
+I have created this repository, so that I can learn SocketProgramming, MultiThreading,
+GUI Programming using Tkinter, CodeManagement etc.
+I am thinking of implementing web version of this too, so that I can learn Django as well.
 
-You can use the [editor on GitHub](https://github.com/AyushSenapati/ChatRoom/edit/master/README.md) to maintain and preview the content for your website in Markdown files.
+##########################################################################################
+This repository contains chatServer.py, which is the main server application.
+Client application has not been added yet, but will be added soon.
 
-Whenever you commit to this repository, GitHub Pages will run [Jekyll](https://jekyllrb.com/) to rebuild the pages in your site, from the content in your Markdown files.
-
-### Markdown
-
-Markdown is a lightweight and easy-to-use syntax for styling your writing. It includes conventions for
-
-```markdown
-Syntax highlighted code block
-
-# Header 1
-## Header 2
-### Header 3
-
-- Bulleted
-- List
-
-1. Numbered
-2. List
-
-**Bold** and _Italic_ and `Code` text
-
-[Link](url) and ![Image](src)
-```
-
-For more details see [GitHub Flavored Markdown](https://guides.github.com/features/mastering-markdown/).
-
-### Jekyll Themes
-
-Your Pages site will use the layout and styles from the Jekyll theme you have selected in your [repository settings](https://github.com/AyushSenapati/ChatRoom/settings). The name of this theme is saved in the Jekyll `_config.yml` configuration file.
-
-### Support or Contact
-
-Having trouble with Pages? Check out our [documentation](https://help.github.com/categories/github-pages-basics/) or [contact support](https://github.com/contact) and we’ll help you sort it out.
+How to run:
+###########
+    ./chatServer.py
