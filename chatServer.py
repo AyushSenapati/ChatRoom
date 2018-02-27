@@ -4,6 +4,8 @@ __author__ = 'Ayush Prakash Senapati <a.p.senapati008@gmail.com>'
 import os
 import sys
 import socket
+
+import getpass
 import select
 import signal
 import threading
@@ -12,14 +14,15 @@ from datetime import datetime
 
 # Local modules
 from APIs.logging import Log
+from APIs.security import *
 
-# Set program Terminate flag
+# Declare Global variables
 TERMINATE = False
 CLI_HASH = {}
+KEY = ''
 
 class Server():
     def __init__(self):
-        self.cli_hash = {}
         self.HOST_IP = '0.0.0.0'
         self.HOST_PORT = '8080'
         self.MAX_USR_ACCPT = '100'
@@ -150,19 +153,18 @@ class Server():
                 # where keys will be connection object and values will
                 # be client thread object.
                 CLI_HASH[conn] = cli_obj
-                #cli_thread_obj.run()
 
                 threading._start_new_thread(cli_obj.run, ('',))
-        # Wait for all client threads to exit their process
         try:
-            # TODO Broadcast connection termination request
-            # when the server is going to shutdown.
-            # Upon receiving connection termination request, all
-            # connected client applications must wait for 5 seconds
-            # for the users to close their applications, before
-            # terminating connections automatically.
             print('Server has stopped listening on opened socket.')
             print('Broadcasting connection termination signal..')
+            msg = "Sorry! We are unable to serve at this moment."
+            for cli_socket in CLI_HASH.keys():
+                try:
+                    cli_socket.send(msg.encode())
+                except:
+                    cli_socket.close()
+                    CLI_HASH.pop(cli_socket)
         except:
             pass
 
@@ -233,7 +235,8 @@ class Client():
         # Feature-1: User can get online users list
         if msg == '@getonline':
             self._loop_break_flag = True
-            self.conn.send(str(self.srv_obj.user_list).encode())
+            #self.conn.send(str(self.srv_obj.user_list).encode())
+            self.conn.send(encrypt(KEY, str(self.srv_obj.user_list)))
 
         # Feature-2: User can send msg to individual user
         if msg.split()[0][1:] in self.srv_obj.user_list:
@@ -249,7 +252,8 @@ class Client():
                         logging.log(msg_type='EXCEPTION', msg=e)
 
     def run(self, *args):
-        self.userName = self.conn.recv(100).decode()
+        #self.userName = self.conn.recv(100).decode()
+        self.userName = decrypt(KEY, self.conn.recv(100))
         #_userPasswd = self.conn.recv(100).decode()
 
         self.validate_user()
@@ -260,12 +264,13 @@ class Client():
         
         # sends a message to the client whose user object is conn
         msg_send = "Welcome [" + self.userName + "] to this chatroom!"
-        self.conn.send(msg_send.encode())
+        #self.conn.send(msg_send.encode())
+        self.conn.send(encrypt(KEY, msg_send))
 
         while True:
             try:
                 self._loop_break_flag = False
-                msg = self.conn.recv(2048).decode()
+                msg = decrypt(KEY, self.conn.recv(2048))
 
                 if msg:
                     if msg.split()[0][0] == '@':
@@ -291,12 +296,14 @@ class Client():
 
     def broadcast(self, msg, IND_FLAG=False):
         if IND_FLAG:
-            self.IND_SOCK.send(msg.encode())
+            #self.IND_SOCK.send(encrypt(KEY, msg).encode())
+            self.IND_SOCK.send(encrypt(KEY, msg))
             return
         for cli_socket in CLI_HASH.keys():
             if cli_socket != self.conn:
                 try:
-                    cli_socket.send(msg.encode())
+                    #cli_socket.send(msg.encode())
+                    cli_socket.send(encrypt(KEY, msg))
                 except:
                     cli_socket.close()
                     # If the link is broken, remove the client
@@ -313,11 +320,13 @@ class Client():
 
 if __name__ == "__main__":
     try:
+        #global KEY
         # Call main function if the program is running as active program.
         logging = Log(f_name='server_chatroom_' + datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
         logging.logging_flag = True
         logging.silent_flag = True
         logging.validate_file()
+        KEY = hasher(getpass.getpass("Key to encrypt the chatrooom:").encode())
         server = Server()
         server.init()
     except SystemExit as e:
@@ -325,10 +334,10 @@ if __name__ == "__main__":
             # Normal exit, let unittest catch it
             raise
         else:
-            #print(sys.exc_info())
+            print(sys.exc_info())
             print('Something went wrong!!\nPlease contact developers.')
             os._exit(1)
-    #except:
-    #    print('Something went wrong!!\nPlease contact developers\nTerminating the process forcefully..')
-    #    time.sleep(1)
-    #    os._exit(1)
+    except:
+        print('Something went wrong!!\nPlease contact developers\nTerminating the process forcefully..')
+        time.sleep(1)
+        os._exit(1)
