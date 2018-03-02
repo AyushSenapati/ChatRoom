@@ -16,7 +16,8 @@ class Log(object):
         self.f_extn = '.log'
         self.logging_flag = False
         self.silent_flag = False
-        # self.validate_file()
+        self.abspath = self.f_location + self.f_name + self.f_extn
+        self.f_obj = None
 
     def validate_file(self):
         ''' This method sets absolute path of the given file
@@ -24,15 +25,14 @@ class Log(object):
         a file object which will be later used to write msg
         to a file.
         '''
-        self.abspath = self.f_location + self.f_name + self.f_extn
         if self.logging_flag:
             if os.path.exists('self.abspath'):
                 raise ValueError('{} File exists'.format(self.abspath))
             else:
                 try:
+                    self.f_obj = open(self.abspath, 'w+')
                     print('Logging has been enabled!!!')
                     print('Log file: ' + self.abspath)
-                    self.f_obj = open(self.abspath, 'w+')
                 except Exception as e:
                     raise e
                                 
@@ -45,7 +45,7 @@ class Log(object):
         logging_msg = time.ctime() + ' [' + self.msg_type + '] ' + str(msg)
         if not self.silent_flag:
             print(logging_msg)
-        if self.logging_flag:
+        if self.logging_flag and self.f_obj:
             self.f_obj.write(logging_msg + '\n')
 
     def stop(self, msg='logging has been stopped'):

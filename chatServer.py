@@ -5,7 +5,7 @@ import os
 import sys
 import socket
 
-import getpass
+import pickle
 import select
 import signal
 import threading
@@ -15,6 +15,7 @@ from datetime import datetime
 # Local modules
 from APIs.logging import Log
 from APIs.security import *
+from Crypto.Random import random
 
 # Declare Global variables
 TERMINATE = False
@@ -83,30 +84,31 @@ class Server():
         print(' has been pressed.\n')
 
     def srv_prompt(self):
+        # TODO: Add feature to view server socket status
         global TERMINATE
         while True:
-            OPT = input('\nenter command $ ')
-            if OPT == '\h':
+            opt = input('\nenter command $ ')
+            if opt == '\h':
                 self.show_help()
-            elif OPT == '\monitor':
+            elif opt == '\monitor':
                 print('Monitoring mode ENABLED!')
                 logging.silent_flag = False
                 signal.signal(signal.SIGINT, self.signal_handler)
                 signal.pause()
                 print('Monitoring mode DISABLED')
                 logging.silent_flag = True
-            elif OPT == '\sd':
+            elif opt == '\sd':
                 self.show_config(type_='default')
-            elif OPT == '\sc':
+            elif opt == '\sc':
                 self.show_config(type_='active')
-            elif OPT == '\sau':
+            elif opt == '\sau':
                 self.update_active_users()
                 logging.log(self.user_list)
                 print(self.user_list)
-            elif OPT == '\sf':
+            elif opt == '\sf':
                 print('WARNING: All users will be disconnected with out any notification!!')
-                OPT = input('Do you really want to close server?[Y/N] ')
-                if OPT == 'Y':
+                opt = input('Do you really want to close server?[Y/N] ')
+                if opt == 'Y':
                     logging.log('Shuting down server...')
                     print('Shuting down server...')
                     TERMINATE = True
@@ -114,9 +116,10 @@ class Server():
                 else:
                     logging.log('Aborted.')
                     print('Aborted.')
-            elif OPT == '\sg':
+                    pass
+            elif opt == '\sg':
                 pass
-            elif OPT == '':
+            elif opt == '':
                 pass
             else:
                 print('COMMAND NOT FOUND!!')
@@ -144,7 +147,7 @@ class Server():
             except Exception as e:
                 raise e
             else:
-                logging.log('No exception occured')
+                logging.log('An user has been connected with out exception')
                 # Instantiate individual Client thread object
                 # to do client related stuffs.
                 cli_obj = Client(conn, addr, self)
@@ -175,10 +178,10 @@ class Server():
         logging.log('Initializing server')
         if len(sys.argv) == 1:
             self.show_config(type_='default')
-            OPT = input('Set these default config?[Y/n] ')
-            if OPT == '':
-                OPT = 'Y'
-            if OPT in ('Y', 'y', 'yes', 'Yes', 'YES'):
+            opt = input('Set these default config?[Y/n] ')
+            if opt == '':
+                opt = 'Y'
+            if opt in ('Y', 'y', 'yes', 'Yes', 'YES'):
                 print("Setting up default configurations...")
             else:
                 self.set_usr_config(parameters=False)
@@ -227,6 +230,7 @@ class Client():
         self.conn = conn
         self.addr = addr
         self.userName = '-N/A-'
+        self.PUBLIC_KEY = None
 
     def validate_user(self):
         pass
@@ -235,8 +239,8 @@ class Client():
         # Feature-1: User can get online users list
         if msg == '@getonline':
             self._loop_break_flag = True
-            #self.conn.send(str(self.srv_obj.user_list).encode())
-            self.conn.send(encrypt(KEY, str(self.srv_obj.user_list)))
+            self.conn.send(
+                    AES_.encrypt(self.KEY, str(self.srv_obj.user_list)))
 
         # Feature-2: User can send msg to individual user
         if msg.split()[0][1:] in self.srv_obj.user_list:
@@ -245,32 +249,65 @@ class Client():
                 if CLI_HASH[_conn].userName == msg.split()[0][1:]:
                     try:
                         self.IND_SOCK = _conn
-                        msg_send = "<" + self.userName + "@" + self.addr[0] + "> " +\
-                                '[IND] ' + ' '.join(msg.split()[1:])
+                        msg_send = "<" + self.userName + "@" + self.addr[0] +\
+                                "> [IND] " + ' '.join(msg.split()[1:])
                         self.broadcast(msg_send, IND_FLAG=True)
                     except Exception as e:
                         logging.log(msg_type='EXCEPTION', msg=e)
 
-    def run(self, *args):
-        #self.userName = self.conn.recv(100).decode()
-        self.userName = decrypt(KEY, self.conn.recv(100))
-        #_userPasswd = self.conn.recv(100).decode()
+    def getSharedKey(self):
+        TOKEN_CHAR_LIST = "abcdefghij!@#$%"
 
+        # Generate unique symmetric 10bit key for each client
+        passphrase = ''.join(random.sample(TOKEN_CHAR_LIST, 10))
+
+        # Get 32bit MD5 hash of random string generated above
+        shared_key = hasher(passphrase)
+
+        # Encrypt shared key with user's public key
+        EnSharedKey = RSA_.encrypt(self.PUBLIC_KEY, shared_key)
+        if EnSharedKey:
+            return (shared_key, EnSharedKey)
+        else:
+            logging.log("Unable to encrypt shared key with RSA.", msg_type='ERROR')
+
+    def run(self, *args):
+        data = self.conn.recv(4000)
+
+        # get serialized data from received data and
+        # load it to user_name and public key variables.
+        # tuple object can't be sent over a network,
+        # it needs to be serialized before sending.
+        self.userName, self.PUBLIC_KEY = pickle.loads(data)
+
+        # Get unique shared/symmetric key and encrypt
+        # it with RSA public key received from the user.
+        self.KEY, EnSharedKey = self.getSharedKey()
+
+        # As EnSharedKey is a tuple, serialize
+        # it before sending it to the user.
+        EnSharedKey = pickle.dumps(EnSharedKey)
+        self.conn.send(EnSharedKey)
+
+        # self.userName = self.conn.recv(100).decode()
         self.validate_user()
         
         msg = self.userName + " has joined the chatroom."
         logging.log(msg)
         self.broadcast("\n" + msg)
+
+        tmp_msg = "symmetric key for " + self.userName + ': ' + self.KEY
+        logging.log(tmp_msg)
         
         # sends a message to the client whose user object is conn
         msg_send = "Welcome [" + self.userName + "] to this chatroom!"
-        #self.conn.send(msg_send.encode())
-        self.conn.send(encrypt(KEY, msg_send))
+        self.conn.send(AES_.encrypt(self.KEY, msg_send))
 
         while True:
             try:
                 self._loop_break_flag = False
-                msg = decrypt(KEY, self.conn.recv(2048))
+                msg = self.conn.recv(20000)
+                msg = AES_.decrypt(self.KEY, msg)
 
                 if msg:
                     if msg.split()[0][0] == '@':
@@ -289,28 +326,34 @@ class Client():
                     # msg may have no content if the connection
                     # is broken, in that case remove the connection
                     self.remove()
+                    pass
             except Exception as e:
                 logging.log('exception occured for user ' + self.userName)
                 logging.log(msg_type='EXCEPTION', msg=e)
-                self.remove()
+                #self.remove()
 
     def broadcast(self, msg, IND_FLAG=False):
         if IND_FLAG:
-            #self.IND_SOCK.send(encrypt(KEY, msg).encode())
-            self.IND_SOCK.send(encrypt(KEY, msg))
+            self.IND_SOCK.send(
+                    AES_.encrypt(CLI_HASH[self.IND_SOCK].KEY, msg))
             return
         for cli_socket in CLI_HASH.keys():
             if cli_socket != self.conn:
                 try:
-                    #cli_socket.send(msg.encode())
-                    cli_socket.send(encrypt(KEY, msg))
+                    tmp = "msg sent to "+ CLI_HASH[cli_socket].userName +\
+                            " encrypted with his unique KEY [" + CLI_HASH[cli_socket].KEY + "] "
+                    logging.log(tmp)
+                    cli_socket.send(
+                            AES_.encrypt(CLI_HASH[cli_socket].KEY, msg))
                 except:
+                    raise Exception
                     cli_socket.close()
                     # If the link is broken, remove the client
                     self.remove()
 
     def remove(self):
         if self.conn in CLI_HASH.keys():
+            self.conn.close()
             msg = str(CLI_HASH[self.conn].userName) + " went offline!"
             logging.log(msg)
             msg = "\n" + msg 
@@ -320,19 +363,16 @@ class Client():
 
 if __name__ == "__main__":
     try:
-        #global KEY
         # Call main function if the program is running as active program.
         logging = Log(f_name='server_chatroom_' + datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
         logging.logging_flag = True
         logging.silent_flag = True
         logging.validate_file()
-        KEY = hasher(getpass.getpass("Key to encrypt the chatrooom:").encode())
         server = Server()
         server.init()
     except SystemExit as e:
-        if e.code != 'EMERGENCY':
-            # Normal exit, let unittest catch it
-            raise
+        if e.code != 'EMERGENCY': 
+            raise  # Normal exit, let unittest catch it
         else:
             print(sys.exc_info())
             print('Something went wrong!!\nPlease contact developers.')
