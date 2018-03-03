@@ -14,6 +14,7 @@ from datetime import datetime
 
 # Local modules
 from APIs.logging import Log
+from APIs.logging import Color
 from APIs.security import *
 from Crypto.Random import random
 
@@ -87,7 +88,7 @@ class Server():
         # TODO: Add feature to view server socket status
         global TERMINATE
         while True:
-            opt = input('\nenter command $ ')
+            opt = input(Color.PURPLE + '\nenter command $ ' + Color.ENDC)
             if opt == '\h':
                 self.show_help()
             elif opt == '\monitor':
@@ -106,7 +107,9 @@ class Server():
                 logging.log(self.user_list)
                 print(self.user_list)
             elif opt == '\sf':
-                print('WARNING: All users will be disconnected with out any notification!!')
+                print(Color.WARNING +
+                        'WARNING: All users will be disconnected with out any notification!!' +
+                        Color.ENDC)
                 opt = input('Do you really want to close server?[Y/N] ')
                 if opt == 'Y':
                     logging.log('Shuting down server...')
@@ -147,7 +150,9 @@ class Server():
             except Exception as e:
                 raise e
             else:
-                logging.log('An user has been connected with out exception')
+                logging.log(
+                        'A connection from [{}.{}] has been received.'.format(
+                            addr[0], addr[1]))
                 # Instantiate individual Client thread object
                 # to do client related stuffs.
                 cli_obj = Client(conn, addr, self)
@@ -231,6 +236,7 @@ class Client():
         self.addr = addr
         self.userName = '-N/A-'
         self.PUBLIC_KEY = None
+        self.KEY = ''
 
     def validate_user(self):
         pass
@@ -278,12 +284,28 @@ class Client():
         # load it to user_name and public key variables.
         # tuple object can't be sent over a network,
         # it needs to be serialized before sending.
-        self.userName, self.PUBLIC_KEY = pickle.loads(data)
+        if data:
+            self.userName, self.PUBLIC_KEY = pickle.loads(data)
 
         # Get unique shared/symmetric key and encrypt
         # it with RSA public key received from the user.
-        self.KEY, EnSharedKey = self.getSharedKey()
+        if self.PUBLIC_KEY:
+            self.KEY, EnSharedKey = self.getSharedKey()
+        else:
+            tmp_conn = "{}:{}".format(self.addr[0], self.addr[1])
+            logging.log(
+                    "Public key has not been received from [{}@{}]".format(
+                        self.userName, tmp_conn))
+            logging.log(
+                "[0.0.0.0:8080 --> {}] Socket has been terminated ".format(tmp_conn))
+            self.remove()
 
+        if self.KEY == '':
+            logging.log("Symmetric key generation failed")
+
+        tmp_msg = "symmetric key {} has been sent to {}".format(self.KEY, self.userName)
+        logging.log(tmp_msg)
+        
         # As EnSharedKey is a tuple, serialize
         # it before sending it to the user.
         EnSharedKey = pickle.dumps(EnSharedKey)
@@ -296,9 +318,6 @@ class Client():
         logging.log(msg)
         self.broadcast("\n" + msg)
 
-        tmp_msg = "symmetric key for " + self.userName + ': ' + self.KEY
-        logging.log(tmp_msg)
-        
         # sends a message to the client whose user object is conn
         msg_send = "Welcome [" + self.userName + "] to this chatroom!"
         self.conn.send(AES_.encrypt(self.KEY, msg_send))
@@ -328,8 +347,7 @@ class Client():
                     self.remove()
                     pass
             except Exception as e:
-                logging.log('exception occured for user ' + self.userName)
-                logging.log(msg_type='EXCEPTION', msg=e)
+                logging.log(msg_type='EXCEPTION', msg='[{}] {}'.format(self.userName, e))
                 #self.remove()
 
     def broadcast(self, msg, IND_FLAG=False):
@@ -354,11 +372,14 @@ class Client():
     def remove(self):
         if self.conn in CLI_HASH.keys():
             self.conn.close()
-            msg = str(CLI_HASH[self.conn].userName) + " went offline!"
-            logging.log(msg)
-            msg = "\n" + msg 
-            self.broadcast(msg)
+            if self.userName != "-N/A-":
+                msg = str(CLI_HASH[self.conn].userName) + " went offline!"
+                logging.log(msg)
+                msg = "\n" + msg 
+                self.broadcast(msg)
             CLI_HASH.pop(self.conn)
+            self.srv_obj.update_active_users()
+            print(self.srv_obj.user_list)
             sys.exit()
 
 if __name__ == "__main__":
@@ -378,6 +399,7 @@ if __name__ == "__main__":
             print('Something went wrong!!\nPlease contact developers.')
             os._exit(1)
     except:
+        raise Exception
         print('Something went wrong!!\nPlease contact developers\nTerminating the process forcefully..')
         time.sleep(1)
         os._exit(1)

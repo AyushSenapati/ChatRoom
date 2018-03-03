@@ -9,6 +9,7 @@ import pickle
 import getpass
 import threading
 import time
+from datetime import datetime
 from tkinter import *
 
 # Adding APIs directory to python system path
@@ -97,30 +98,43 @@ class Network():
         ''' Constructor to initialise network
         connectivity between the client and server.
         '''
-        # threading.Thread.__init__(self)
         self.SRV_IP = SRV_IP
         self.SRV_PORT = int(SRV_PORT)
         self.client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.client.connect((self.SRV_IP, self.SRV_PORT))
         self.KEY_FLAG = False
+        self.priv_key = None
+        self.pub_key = None
+
+    def genRSA(self, *args):
+        # Generate Private and Public key for particular session
+        logging.log("Generating private and public key")
+        self.priv_key, self.pub_key = RSA_.genRSA()
+        logging.log("Keys generation completed.")
+        logging.log(self.pub_key.exportKey())
 
     def initEncryption(self, userName):
         global KEY
+
         # Generate Private and Public key for particular session
-        priv, pub = RSA_.genRSA()
-        print(pub)
-        print(pub.exportKey())
-        msg_send = (userName, pub)
+        #logging.log("Generating private and public key for %s", userName)
+        #priv, pub = RSA_.genRSA()
+        #logging.log("Keys generation completed.")
+        #logging.log(pub.exportKey())
+        
+        # Prepare data for serialization as tuple
+        # can't be transmitted over network.
+        msg_send = (userName, self.pub_key)
         msg_send = pickle.dumps(msg_send)
         self.client.send(msg_send)
         logging.log("User name along with public key has been sent to the server.")
+
         # Wait for the server to send symmetric key
         EnSharedKey = self.client.recv(1024)
         EnSharedKey = pickle.loads(EnSharedKey)
         print(EnSharedKey)
-        KEY = RSA_.decrypt(priv, EnSharedKey)
+        KEY = RSA_.decrypt(self.priv_key, EnSharedKey)
         print(KEY)
-        print("")
         if KEY:
             logging.log("Unique key has been received")
             self.KEY_FLAG = True
@@ -132,7 +146,7 @@ class Network():
             return msg_rcv
 
     def send_msg(self, msg_snd):
-        if not self.KEY_FLAG:
+        if KEY is None:
             # Send (userName, RSA_PublicKey) to the server
             # to get encrypted symmetric key for further encryption.
             self.initEncryption(msg_snd)
@@ -143,17 +157,16 @@ class Network():
             print("Bytes sent: ", result)
         except Exception as e:
             print(e)
-            #GUI.update(self.guiObj, "Not connected to the server")
             GUI.update(GUI_OBJ, "Not connected to the server")
 
 # Outsite class functions
 def connection_thread(*args):
     root = args[0]
-    retry_count = 5
+    retry_count = 0
     gui_flag = False
     while True:
         try:
-            network = Network('network_thread', '192.168.0.108', 8080)
+            network = Network('network_thread', '127.0.0.1', 8080)
             if gui_flag:
                 gui.network = network
             if not gui_flag:
@@ -162,35 +175,42 @@ def connection_thread(*args):
             gui.update('Connected to the server')
             gui.update('Enter your name.')
             break
-        except:
-            retry_count -= 1
-            if retry_count == 4:
+        except Exception as e:
+            msg = "[Retry {}] {}".format(retry_count+1, e)
+            logging.log(msg)
+            retry_count += 1
+            if retry_count == 1:
                 gui = GUI(root, None)
-                logging.log('Failed to connect the server')
                 gui.update("Failed to connect the server.\n" +\
-                        "Will start retrying after 5 seconds")
-                time.sleep(5)
-                gui_flag = True
-            elif 4 > retry_count > 0:
-                logging.log('Retry connecting...')
+                        "Started retrying.")
                 gui.update("Retry connecting...")
                 time.sleep(5)
                 gui_flag = True
-            elif retry_count == 0:
-                gui.update("Connection failed after retry.\n" +\
-                        "Check your internet connectivity and try again." +\
-                        "Exiting after 5 seconds")
+            elif 4 > retry_count:
+                #logging.log('Retry connecting...')
+                #gui.update("Retry connecting...")
+                time.sleep(5)
+                gui_flag = True
+            elif retry_count == 5:
+                gui.update("Retry limit exceeded.\n" +\
+                        "Unable to connect the server.\n" +\
+                        "Program will automatically exit after 5 sec.")
                 time.sleep(5)
                 gui_flag = True
                 root.destroy()
+    logging.log('New thread has been initialized to fetch data from the server')
+    #threading._start_new_thread(network.genRSA, ())
+    rsa_thread = threading.Thread(target=network.genRSA, args=())
+    rsa_thread.start()
+    rsa_thread.join()
     threading._start_new_thread(gui.get_msg,())
 
 def main():
     root = Tk() # instialize root window
     root.title('ChatRoom')
 
-    logging.log('Connection thread has been called')
     threading._start_new_thread(connection_thread, (root,))
+    logging.log('Connection thread has been called')
 
     root.mainloop()
 
@@ -198,12 +218,10 @@ def main():
     logging.stop()
 
 if __name__ == "__main__":
-    # Call main function if program is running as main program
-    logging = Log(f_name='client_chatroom')
+    logging = Log(f_name='client_chatroom_' + datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
     opt = input('Enable logging? (y/N): ')
-    #KEY = hasher(getpass.getpass("Enter password:").encode())
     if opt in ('y', 'Y', 'yes', 'Yes', 'YES'):
-        # it will both save log_msg to a file and print to sys.out
+        # it will both save log_msg to a file and print to sys.stdout
         logging.logging_flag = True
         logging.validate_file()
     main()
