@@ -4,6 +4,7 @@ __author__ = 'Ayush Prakash Senapati <a.p.senapati008@gmail.com>'
 import os
 import sys
 import socket
+import psutil
 
 import pickle
 import select
@@ -38,6 +39,7 @@ class Server():
         \sc         Show current configuration
         \sau        Show active users
         \sac        Show active chat rooms
+        \ssi        Show socket info
         \sf         Shutdown server forcefully
         \sg         Shutdown server gracefully [Recommended]
         \monitor    Enables monitor mode'''
@@ -83,12 +85,21 @@ class Server():
 
     def signal_handler(self, signal, frame):
         print(' has been pressed.\n')
+    
+    def get_connection_stats(self):
+        msg = f"{'LOCAL_IP'}:{'LOCAL_PORT'}{'REMOTE_IP':>10}:{'REMOTE_PORT'}{'STATUS':>10}\t{'PID':>5}"
+        print(msg)
+        print('-' * len(msg))
+        for conn in psutil.net_connections():
+            if conn.laddr.port == 8080 and conn.status != "LISTEN":
+                print("{}:{}\t\t{}:{}\t\t{}\t{}".format(
+                    conn.laddr.ip, conn.laddr.port, conn.raddr.ip,
+                    conn.raddr.port, conn.status, conn.pid))
 
     def srv_prompt(self):
-        # TODO: Add feature to view server socket status
         global TERMINATE
         while True:
-            opt = input(Color.PURPLE + '\nenter command $ ' + Color.ENDC)
+            opt = input(Color.PURPLE + '\nenter command $ ' + Color.ENDC).lower()
             if opt == '\h':
                 self.show_help()
             elif opt == '\monitor':
@@ -106,6 +117,8 @@ class Server():
                 self.update_active_users()
                 logging.log(self.user_list)
                 print(self.user_list)
+            elif opt == '\ssi':
+                self.get_connection_stats()
             elif opt == '\sf':
                 print(Color.WARNING +
                         'WARNING: All users will be disconnected with out any notification!!' +

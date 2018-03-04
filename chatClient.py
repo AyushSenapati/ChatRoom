@@ -162,11 +162,13 @@ class Network():
 # Outsite class functions
 def connection_thread(*args):
     root = args[0]
+    srv_ip = args[1]
     retry_count = 0
     gui_flag = False
+    print(f'Connecting {srv_ip}')
     while True:
         try:
-            network = Network('network_thread', '127.0.0.1', 8080)
+            network = Network('network_thread', srv_ip, 8080)
             if gui_flag:
                 gui.network = network
             if not gui_flag:
@@ -187,8 +189,6 @@ def connection_thread(*args):
                 time.sleep(5)
                 gui_flag = True
             elif 4 > retry_count:
-                #logging.log('Retry connecting...')
-                #gui.update("Retry connecting...")
                 time.sleep(5)
                 gui_flag = True
             elif retry_count == 5:
@@ -206,10 +206,13 @@ def connection_thread(*args):
     threading._start_new_thread(gui.get_msg,())
 
 def main():
+    srv_ip = '127.0.0.1'
+    if len(sys.argv) == 2:
+        srv_ip = sys.argv[1]
     root = Tk() # instialize root window
     root.title('ChatRoom')
 
-    threading._start_new_thread(connection_thread, (root,))
+    threading._start_new_thread(connection_thread, (root, srv_ip))
     logging.log('Connection thread has been called')
 
     root.mainloop()
