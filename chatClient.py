@@ -1,12 +1,11 @@
 #! /usr/bin/env python3
 
-import os
+# import os
 import sys
-import select
 import socket
 
 import pickle
-import getpass
+# import getpass
 import threading
 import time
 from datetime import datetime
@@ -58,9 +57,7 @@ class GUI(object):
     # def init_textbox(self):
 
     def update(self, msg):
-        '''
-        This method updates chat window
-        '''
+        """This method updates messages on display window"""
         msg = '\n' + msg
         self.txt_disp.configure(state='normal')
         self.txt_disp.insert(END, msg)
@@ -68,10 +65,10 @@ class GUI(object):
         self.txt_disp.configure(state='disabled')
 
     def get_entry(self, *arg):
-        ''' Gets input from the input field and uses
+        """ Gets input from the input field and uses
         network object to send message to the server.
         Finally clears input field to enter msg.
-        '''
+        """
         # print(self.thread_name + ">> " + str(self.txt_input.get('1.0',END)))
         msg_snd = self.txt_input.get('1.0', END)
         msg_snd = msg_snd.strip('\n')
@@ -81,53 +78,51 @@ class GUI(object):
         self.txt_input.delete('1.0', END)
 
     def get_msg(self, *arg):
-        ''' This method is being used by separate thread
+        """ This method is being used by separate thread
         to keep on receiving messages from the server and
         update chat window.
-        '''
+        """
         while True:
-            msg_rcv = self.network.get_msg()
+            msg_rcv = self.network.get_msg
             if msg_rcv:
                 msg_rcv = msg_rcv.strip('\n')
                 print('-' * 60)
                 print(msg_rcv)
                 self.update(msg_rcv)
 
-class Network():
-    def __init__(self, thread_name, SRV_IP='', SRV_PORT=''):
-        ''' Constructor to initialise network
+
+class Network(object):
+    """Class to handle all networking stuffs for the client application"""
+    def __init__(self, srv_ip='', srv_port='8080'):
+        """ Constructor to initialise network
         connectivity between the client and server.
-        '''
-        self.SRV_IP = SRV_IP
-        self.SRV_PORT = int(SRV_PORT)
+        """
+        self.srv_ip = srv_ip
+        self.srv_port = int(srv_port)
         self.client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.client.connect((self.SRV_IP, self.SRV_PORT))
+        self.client.connect((self.srv_ip, self.srv_port))
         self.KEY_FLAG = False
         self.priv_key = None
         self.pub_key = None
 
     def genRSA(self, *args):
-        # Generate Private and Public key for particular session
+        """Generate Private and Public key for particular session"""
         logging.log("Generating private and public key")
         self.priv_key, self.pub_key = RSA_.genRSA()
         logging.log("Keys generation completed.")
         logging.log(self.pub_key.exportKey())
 
     def initEncryption(self, userName):
+        """Initialise secure connection"""
         global KEY
-
-        # Generate Private and Public key for particular session
-        #logging.log("Generating private and public key for %s", userName)
-        #priv, pub = RSA_.genRSA()
-        #logging.log("Keys generation completed.")
-        #logging.log(pub.exportKey())
         
         # Prepare data for serialization as tuple
         # can't be transmitted over network.
         msg_send = (userName, self.pub_key)
         msg_send = pickle.dumps(msg_send)
         self.client.send(msg_send)
-        logging.log("User name along with public key has been sent to the server.")
+        logging.log(
+            "User name along with public key has been sent to the server.")
 
         # Wait for the server to send symmetric key
         EnSharedKey = self.client.recv(1024)
@@ -140,8 +135,9 @@ class Network():
             self.KEY_FLAG = True
             logging.log("Secure connection has been established.")
 
+    @property
     def get_msg(self):
-        if KEY != None:
+        if KEY is not None:
             msg_rcv = AES_.decrypt(KEY.encode(), self.client.recv(20000))
             return msg_rcv
 
@@ -159,7 +155,8 @@ class Network():
             print(e)
             GUI.update(GUI_OBJ, "Not connected to the server")
 
-# Outsite class functions
+
+# Outside class functions
 def connection_thread(*args):
     root = args[0]
     srv_ip = args[1]
@@ -168,7 +165,7 @@ def connection_thread(*args):
     print(f'Connecting {srv_ip}')
     while True:
         try:
-            network = Network('network_thread', srv_ip, 8080)
+            network = Network(srv_ip, '8080')
             if gui_flag:
                 gui.network = network
             if not gui_flag:
@@ -183,8 +180,8 @@ def connection_thread(*args):
             retry_count += 1
             if retry_count == 1:
                 gui = GUI(root, None)
-                gui.update("Failed to connect the server.\n" +\
-                        "Started retrying.")
+                gui.update("Failed to connect the server.\n"
+                           "Started retrying.")
                 gui.update("Retry connecting...")
                 time.sleep(5)
                 gui_flag = True
@@ -192,24 +189,28 @@ def connection_thread(*args):
                 time.sleep(5)
                 gui_flag = True
             elif retry_count == 5:
-                gui.update("Retry limit exceeded.\n" +\
-                        "Unable to connect the server.\n" +\
-                        "Program will automatically exit after 5 sec.")
+                gui.update("Retry limit exceeded.\n"
+                           "Unable to connect the server.\n"
+                           "Program will automatically exit after 5 sec.")
                 time.sleep(5)
                 gui_flag = True
                 root.destroy()
-    logging.log('New thread has been initialized to fetch data from the server')
-    #threading._start_new_thread(network.genRSA, ())
+    logging.log(
+        'New thread has been initialized to fetch data from the server')
+    # threading._start_new_thread(network.genRSA, ())
     rsa_thread = threading.Thread(target=network.genRSA, args=())
     rsa_thread.start()
     rsa_thread.join()
-    threading._start_new_thread(gui.get_msg,())
+    # Start a new thread to fetch
+    # messages from the server continuously
+    threading._start_new_thread(gui.get_msg, ())
+
 
 def main():
     srv_ip = '127.0.0.1'
     if len(sys.argv) == 2:
         srv_ip = sys.argv[1]
-    root = Tk() # instialize root window
+    root = Tk()  # initialize root window
     root.title('ChatRoom')
 
     threading._start_new_thread(connection_thread, (root, srv_ip))
@@ -220,8 +221,10 @@ def main():
     logging.log('exiting main thread.')
     logging.stop()
 
+
 if __name__ == "__main__":
-    logging = Log(f_name='client_chatroom_' + datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+    logging = Log(f_name='client_chatroom_' +
+                         datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
     opt = input('Enable logging? (y/N): ')
     if opt in ('y', 'Y', 'yes', 'Yes', 'YES'):
         # it will both save log_msg to a file and print to sys.stdout

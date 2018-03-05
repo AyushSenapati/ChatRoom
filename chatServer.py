@@ -1,36 +1,49 @@
 #! /usr/bin/env python3
 __author__ = 'Ayush Prakash Senapati <a.p.senapati008@gmail.com>'
 
+# Standard libraries
+import inspect
 import os
-import sys
-import socket
-import psutil
-
-import pickle
-import select
 import signal
+import socket
+import sys
 import threading
-import time
-from datetime import datetime
+from datetime import datetime, time
+
+# Third party libraries
+try:
+    import psutil
+    import pickle
+    from Crypto.Random import random
+except ImportError as e:
+    print(e.msg)
+    print('[psutil, pickle, pycrypt] packages must '
+          'be installed before running the application')
+    print('Exiting application..')
+    sys.exit(0)
 
 # Local modules
 from APIs.logging import Log
 from APIs.logging import Color
 from APIs.security import *
-from Crypto.Random import random
 
 # Declare Global variables
 TERMINATE = False
 CLI_HASH = {}
 KEY = ''
 
-class Server():
+# Constants
+TOKEN_CHAR_LIST = "abcdefghij!@#$%"
+
+
+class Server(object):
     def __init__(self):
         self.HOST_IP = '0.0.0.0'
         self.HOST_PORT = '8080'
-        self.MAX_USR_ACCPT = '100'
+        self.MAX_USR_ACCEPT = '100'
 
-    def show_help(self):
+    @staticmethod
+    def show_help():
         msg = '''
         AVAILABLE COMMANDS:
         \h          Print these information
@@ -51,7 +64,7 @@ class Server():
             Active configuration of the server :
             HOST IP = ''' + self.HOST_IP + '''
             HOST PORT = ''' + self.HOST_PORT + '''
-            MAX USER ALLOWED = ''' + self.MAX_USR_ACCPT 
+            MAX USER ALLOWED = ''' + self.MAX_USR_ACCEPT 
             logging.log('Showing Active server configuration')
             print(msg)
         else:
@@ -69,25 +82,30 @@ class Server():
             try:
                 self.HOST_IP = sys.argv[1]
                 self.HOST_PORT = sys.argv[2]
-                self.MAX_USR_ACCPT = sys.argv[3]
-            except:
-                print('USAGE:\nscript ip_address port_number max_usr_accpt')
+                self.MAX_USR_ACCEPT = sys.argv[3]
+            except Exception as e:
+                logging.log(e)
+                print('USAGE:\nscript ip_address port_number max_usr_accept')
                 sys.exit(0)
         else:
             self.HOST_IP = input('Enter host IP : ')
             self.HOST_PORT = input('Enter host PORT : ')
-            self.MAX_USR_ACCPT = input('Enter max number of users server would accept : ')
+            self.MAX_USR_ACCEPT = input(
+                    'Enter max number of users server would accept : ')
 
     def update_active_users(self):
         self.user_list = []
         for cli_obj in CLI_HASH.values():
             self.user_list.append(cli_obj.userName)
 
-    def signal_handler(self, signal, frame):
+    @staticmethod
+    def signal_handler(*args):
         print(' has been pressed.\n')
-    
-    def get_connection_stats(self):
-        msg = f"{'LOCAL_IP'}:{'LOCAL_PORT'}{'REMOTE_IP':>10}:{'REMOTE_PORT'}{'STATUS':>10}\t{'PID':>5}"
+
+    @staticmethod
+    def get_connection_stats():
+        msg = f"{'LOCAL_IP'}:{'LOCAL_PORT'}\t{'REMOTE_IP'}:" \
+              f"{'REMOTE_PORT'}{'STATUS':>10}\t{'PID':>5}"
         print(msg)
         print('-' * len(msg))
         for conn in psutil.net_connections():
@@ -99,7 +117,8 @@ class Server():
     def srv_prompt(self):
         global TERMINATE
         while True:
-            opt = input(Color.PURPLE + '\nenter command $ ' + Color.ENDC).lower()
+            opt = input(Color.PURPLE +
+                        '\nenter command $ ' + Color.ENDC).lower()
             if opt == '\h':
                 self.show_help()
             elif opt == '\monitor':
@@ -120,15 +139,16 @@ class Server():
             elif opt == '\ssi':
                 self.get_connection_stats()
             elif opt == '\sf':
-                print(Color.WARNING +
-                        'WARNING: All users will be disconnected with out any notification!!' +
-                        Color.ENDC)
+                print(
+                    Color.WARNING + 'WARNING: All users will be disconnected'
+                                    ' with out any notification!!' +
+                    Color.ENDC)
                 opt = input('Do you really want to close server?[Y/N] ')
                 if opt == 'Y':
-                    logging.log('Shuting down server...')
-                    print('Shuting down server...')
+                    logging.log('Shutting down server...')
+                    print('Shutting down server...')
                     TERMINATE = True
-                    sys.exit(0)
+                    return
                 else:
                     logging.log('Aborted.')
                     print('Aborted.')
@@ -138,7 +158,8 @@ class Server():
             elif opt == '':
                 pass
             else:
-                print('COMMAND NOT FOUND!!')
+                print('COMMAND NOT FOUND!!\n'
+                      'Enter [\h] to view all available commands')
 
     def init_clients(self):
         """ Accepts connection requests from clients and stores
@@ -163,9 +184,8 @@ class Server():
             except Exception as e:
                 raise e
             else:
-                logging.log(
-                        'A connection from [{}.{}] has been received.'.format(
-                            addr[0], addr[1]))
+                logging.log(f'A connection from '
+                            f'[{addr[0]}.{addr[1]}] has been received.')
                 # Instantiate individual Client thread object
                 # to do client related stuffs.
                 cli_obj = Client(conn, addr, self)
@@ -175,19 +195,23 @@ class Server():
                 # be client thread object.
                 CLI_HASH[conn] = cli_obj
 
+                # Initialise a new thread for instantiated client object
                 threading._start_new_thread(cli_obj.run, ('',))
         try:
-            print('Server has stopped listening on opened socket.')
-            print('Broadcasting connection termination signal..')
+            print('\t\tServer has stopped listening on opened socket.')
+            print('\t\tBroadcasting connection termination signal..', end=' ')
             msg = "Sorry! We are unable to serve at this moment."
             for cli_socket in CLI_HASH.keys():
                 try:
-                    cli_socket.send(msg.encode())
-                except:
+                    cli_socket.send(
+                        AES_.encrypt(CLI_HASH[cli_socket].KEY, msg))
+                except Exception as e:
+                    logging.log(e, msg_type="EXCEPTION")
                     cli_socket.close()
                     CLI_HASH.pop(cli_socket)
-        except:
-            pass
+        except Exception as e:
+            logging.log(e, msg_type="EXCEPTION")
+        print('\tDone')
 
     def init(self):
         """
@@ -219,30 +243,42 @@ class Server():
         try:
             # Try to create server socket
             self.server.bind((self.HOST_IP, int(self.HOST_PORT)))
-            self.server.listen(int(self.MAX_USR_ACCPT))
-        except:
-            print('Unable to bind HOST IP and PORT.\nPlease check your configuration')            
+            self.server.listen(int(self.MAX_USR_ACCEPT))
+        except Exception as e:
+            logging.log(e)
+            print(
+                'Unable to bind HOST IP and PORT.\n'
+                'Please check your configuration')
             sys.exit('EMERGENCY')
-        print('\nServer is listening at {}:{}'.format(self.HOST_IP, self.HOST_PORT))
-        print('Server is configured to accept %s clients.' %(str(self.MAX_USR_ACCPT)))
+        print(f'\nServer is listening at {self.HOST_IP}:{self.HOST_PORT}')
+        print(f'Server is configured to accept {self.MAX_USR_ACCEPT} clients')
 
-        """ Create two threads thread_srv and thread_cli, where thread_srv
-        will be resposible for handling server input and thread_cli will be
-        responsible for handling users. """
+        """
+        Create two threads thread_srv and thread_cli, where thread_srv
+        will be responsible for handling server input and thread_cli will be
+        responsible for handling users.
+        """
 
-        #thread_srv = threading.Thread(target=self.srv_prompt, args=())
+        # thread_srv = threading.Thread(target=self.srv_prompt, args=())
         thread_cli = threading.Thread(target=self.init_clients, args=())
 
-        #thread_srv.start() # Start a thread for server prompt
-        thread_cli.start() # Start a thread to listening clients reqests
+        # Server prompt can't start by a thread as it uses
+        # signal module to handle CTRL-C signals.
+        # thread_srv.start() # Start a thread for server prompt
+        thread_cli.start()  # Start a thread to listening clients requests
         self.srv_prompt()
-        
-        for thread in (thread_srv, thread_cli):
-            thread.join()
-        print('Server and Client threads are exited.')
+        print('\tserver prompt has been exited')
+
+        print('\tWaiting for client threads to exit...')
+        thread_cli.join(5)
+        if thread_cli.is_alive():
+            logging.log(f'Time out reached. '
+                        f'Terminating {threading.active_count()} forcefully')
+        print('\tDone')
+        print('\tServer and Client threads are exited successfully')
 
 
-class Client():
+class Client(object):
     def __init__(self, conn, addr, srv_obj):
         self.srv_obj = srv_obj
         self.conn = conn
@@ -267,16 +303,19 @@ class Client():
             for _conn in CLI_HASH:
                 if CLI_HASH[_conn].userName == msg.split()[0][1:]:
                     try:
-                        self.IND_SOCK = _conn
+                        self.ind_sock = _conn
                         msg_send = "<" + self.userName + "@" + self.addr[0] +\
-                                "> [IND] " + ' '.join(msg.split()[1:])
-                        self.broadcast(msg_send, IND_FLAG=True)
+                                   "> [IND] " + ' '.join(msg.split()[1:])
+                        self.broadcast(msg_send, ind_flag=True)
                     except Exception as e:
-                        logging.log(msg_type='EXCEPTION', msg=e)
+                        tmp_msg = f"[Function: {inspect.stack()[0].function}]" \
+                                  f"[User: {self.userName}] {e}"
+                        logging.log(tmp_msg, msg_type="EXCEPTION")
+                        tmp_msg = f"[Caller: {inspect.stack()[1].function}]" \
+                                  f"[User: {self.userName}] {e}"
+                        logging.log(tmp_msg, msg_type="EXCEPTION")
 
-    def getSharedKey(self):
-        TOKEN_CHAR_LIST = "abcdefghij!@#$%"
-
+    def get_shared_key(self):
         # Generate unique symmetric 10bit key for each client
         passphrase = ''.join(random.sample(TOKEN_CHAR_LIST, 10))
 
@@ -288,7 +327,8 @@ class Client():
         if EnSharedKey:
             return (shared_key, EnSharedKey)
         else:
-            logging.log("Unable to encrypt shared key with RSA.", msg_type='ERROR')
+            logging.log(
+                "Unable to encrypt shared key with RSA.", msg_type='ERROR')
 
     def run(self, *args):
         data = self.conn.recv(4000)
@@ -303,24 +343,28 @@ class Client():
         # Get unique shared/symmetric key and encrypt
         # it with RSA public key received from the user.
         if self.PUBLIC_KEY:
-            self.KEY, EnSharedKey = self.getSharedKey()
+            self.KEY, EnSharedKey = self.get_shared_key()
         else:
             tmp_conn = "{}:{}".format(self.addr[0], self.addr[1])
             logging.log(
                     "Public key has not been received from [{}@{}]".format(
                         self.userName, tmp_conn))
             logging.log(
-                "[0.0.0.0:8080 --> {}] Socket has been terminated ".format(tmp_conn))
+                f"[0.0.0.0:8080 --> {tmp_conn}] Socket has been terminated ")
             self.remove()
 
         if self.KEY == '':
             logging.log("Symmetric key generation failed")
 
-        tmp_msg = "symmetric key {} has been sent to {}".format(self.KEY, self.userName)
+        tmp_msg = f"symmetric key {self.KEY} has been sent to {self.userName}"
         logging.log(tmp_msg)
         
         # As EnSharedKey is a tuple, serialize
         # it before sending it to the user.
+        try:
+            assert isinstance(EnSharedKey, tuple)
+        except AssertionError as e:
+            logging.log(msg=e, msg_type='EXCEPTION')
         EnSharedKey = pickle.dumps(EnSharedKey)
         self.conn.send(EnSharedKey)
 
@@ -348,11 +392,14 @@ class Client():
 
                     if not self._loop_break_flag:
                         # print the msg sent by user
-                        log_msg = "<" + self.userName + "@" + self.addr[0] + "> " + msg
+                        log_msg = "<" + self.userName + "@" +\
+                                  self.addr[0] + "> " + msg
                         logging.log(msg_type='CHAT', msg=log_msg)
 
-                        # Call broadcast method to relay message to connected users
-                        msg_send = "<" + self.userName + "@" + self.addr[0] + "> " + msg
+                        # Call broadcast method to
+                        # relay message to connected users
+                        msg_send = "<" + self.userName + "@" +\
+                                   self.addr[0] + "> " + msg
                         self.broadcast(msg_send)
                 else:
                     # msg may have no content if the connection
@@ -360,29 +407,59 @@ class Client():
                     self.remove()
                     pass
             except Exception as e:
-                logging.log(msg_type='EXCEPTION', msg='[{}] {}'.format(self.userName, e))
-                #self.remove()
+                tmp_msg = f"[Function: {inspect.stack()[0].function}]" \
+                          f"[User: {self.userName}] {e}"
+                logging.log(tmp_msg, msg_type="EXCEPTION")
+                try:
+                    tmp_msg = f"[Caller: {inspect.stack()[1].function}]" \
+                              f"[User: {self.userName}] {e}"
+                    logging.log(tmp_msg, msg_type="EXCEPTION")
+                except:
+                    logging.log(
+                        "No caller found for above exception",
+                        msg_type="EXCEPTION")
+                # self.remove()
 
-    def broadcast(self, msg, IND_FLAG=False):
-        if IND_FLAG:
-            self.IND_SOCK.send(
-                    AES_.encrypt(CLI_HASH[self.IND_SOCK].KEY, msg))
+    def broadcast(self, msg, ind_flag=False):
+        """
+        This method allows to both broadcasting
+        messages to all connected users and to send message
+        to a particular user if ind_flag is set.
+        """
+        if ind_flag:
+            self.ind_sock.send(
+                    AES_.encrypt(CLI_HASH[self.ind_sock].KEY, msg))
             return
         for cli_socket in CLI_HASH.keys():
             if cli_socket != self.conn:
                 try:
-                    tmp = "msg sent to "+ CLI_HASH[cli_socket].userName +\
-                            " encrypted with his unique KEY [" + CLI_HASH[cli_socket].KEY + "] "
+                    tmp = "msg sent to " + CLI_HASH[cli_socket].userName +\
+                          " encrypted with his unique KEY [" +\
+                          CLI_HASH[cli_socket].KEY + "] "
                     logging.log(tmp)
                     cli_socket.send(
                             AES_.encrypt(CLI_HASH[cli_socket].KEY, msg))
-                except:
-                    raise Exception
+                except Exception as e:
+                    tmp_msg = f"[Function: {inspect.stack()[0].function}]" \
+                              f"[User: {self.userName}] {e}"
+                    logging.log(tmp_msg, msg_type="EXCEPTION")
+                    tmp_msg = f"[Caller: {inspect.stack()[1].function}]" \
+                              f"[User: {self.userName}] {e}"
+                    logging.log(tmp_msg, msg_type="EXCEPTION")
                     cli_socket.close()
                     # If the link is broken, remove the client
                     self.remove()
 
     def remove(self):
+        """
+        This method checks if the connection registered
+        to the thread is present in ClientHash table. If
+        it is present then close the socket and if userName
+        is assigned to the clientThread object, broadcast
+        the user went offline, un-register the connection
+        information from the ClientHash table and exit
+        the thread.
+        """
         if self.conn in CLI_HASH.keys():
             self.conn.close()
             if self.userName != "-N/A-":
@@ -395,24 +472,46 @@ class Client():
             print(self.srv_obj.user_list)
             sys.exit()
 
+
 if __name__ == "__main__":
+    # Call main function if the program is running as active program.
     try:
-        # Call main function if the program is running as active program.
-        logging = Log(f_name='server_chatroom_' + datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+        """
+        Check if the server application is running on Linux/Mac.
+        If it's a Linux machine, no need of root privilege to
+        fetch network connection stats from the kernel.
+        If it's a Macintosh, application must start by root
+        user to get connection information.
+        """
+        # Checks if the OS is Linux
+        if os.uname().sysname != 'Linux':
+            # Checks if application is running by root user
+            if os.getuid() != 0:
+                print(
+                    Color.WARNING + "WARNING: Program must be running "
+                                    "with root user to monitor sockets." + 
+                    Color.ENDC)
+                sys.exit(0)
+        logging = Log(f_name='server_chatroom_' +
+                             datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
         logging.logging_flag = True
         logging.silent_flag = True
         logging.validate_file()
         server = Server()
         server.init()
+        logging.stop('\tlogging has been stopped')
+        print('Done')
     except SystemExit as e:
         if e.code != 'EMERGENCY': 
             raise  # Normal exit, let unittest catch it
         else:
             print(sys.exc_info())
             print('Something went wrong!!\nPlease contact developers.')
-            os._exit(1)
+            sys.exit(1)
     except:
-        raise Exception
-        print('Something went wrong!!\nPlease contact developers\nTerminating the process forcefully..')
+        print(Exception)
+        print(
+            'Something went wrong!!\n'
+            'Please contact developers\nTerminating the process forcefully..')
         time.sleep(1)
-        os._exit(1)
+        sys.exit(1)
