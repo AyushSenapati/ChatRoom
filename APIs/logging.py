@@ -25,7 +25,7 @@ class Color(object):
 
 
 class Log(object):
-    def __init__(self, f_location='/tmp/', f_name=''):
+    def __init__(self, f_location: str ='/tmp/', f_name: str =''):
         """ Use this class to print logs on the sys.out and
         permanently save to a file. can be used for both client
         and server side programming. instantiate object with
@@ -58,7 +58,7 @@ class Log(object):
                 except Exception as e:
                     raise e
                                 
-    def log(self, msg='\t-N/A-', msg_type='INFO') -> type(None):
+    def log(self, msg='\t-N/A-', msg_type: str = 'INFO') -> int:
         """ log_type must be mentioned to show the severity
         of the logging message. severity can be one of the
         followings: ['INFO', 'ERROR', 'EXCEPTION',
@@ -72,6 +72,7 @@ class Log(object):
             print(logging_msg)
         if self.logging_flag and self.f_obj:
             self.f_obj.write(logging_msg + '\n')
+        return 0
 
     def stop(self, msg='logging has been stopped'):
         if self.logging_flag:

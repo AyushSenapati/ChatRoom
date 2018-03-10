@@ -10,10 +10,7 @@ import threading
 import time
 from datetime import datetime
 from tkinter import *
-
-# Adding APIs directory to python system path
-# sys.path.insert(-1, os.path.join(os.path.dirname
-#                                 (os.path.realpath(__file__)), 'APIs'))
+import tkinter.scrolledtext as st
 
 # Local modules
 from APIs.logging import Log
@@ -28,33 +25,89 @@ class GUI(object):
         global GUI_OBJ
         self.master = master
         self.network = network_obj
-        self.txt_input = Text(self.master, width=60, height=5)
-        self.txt_disp = Text(self.master, width=60, height=15, bg='light grey')
-        self.txt_input.bind('<Return>', self.get_entry)
-        self.txt_disp.configure(state='disabled')
-        self.txt_input.focus()
-        self.txt_disp.pack()
-        self.txt_input.pack()
         self.flag = True
         GUI_OBJ = self
 
     def init_canvas(self):
-        self.canvas = Canvas(root, width=730, height=600)
+        """Initialise canvas"""
+        self.canvas = Canvas(self.master, width=730, height=600)
         self.canvas.pack(fill="both", expand=True)
 
     def init_frame(self):
+        """Initialise 2 frames, one at the left for entry widget
+        and one at the right for rest frames. Place 3 frames
+        ['for displaying messages', 'for user input', 'for button']
+        over right side frame.
+        """
+        # Frame for placing Entry widget to get username input
         self.frame_left = Frame(self.canvas, height=400, width=200)
+        # Create a frame at the right side to contain 3 more frames
         self.frame_right = Frame(self.canvas, width=500)
-        self.frame_right_chat_show = Frame(self.frame_right)
-        self.frame_right_chat_input = Frame(self.frame_right, width=460)
-        self.frame_right_chat_input_buttons = Frame(self.frame_right, width=40)
+        # Create and place 3 frames over Right one.
+        self.frame_right_chat_show = Frame(self.frame_right, borderwidth=2, relief=GROOVE)
+        self.frame_right_chat_input = Frame(self.frame_right, width=460, borderwidth=2, relief=GROOVE)
+        self.frame_right_chat_input_buttons = Frame(self.frame_right, width=40, borderwidth=2, relief=GROOVE)
 
         self.frame_left.pack(fill=Y, side='left')
         self.frame_right.pack(fill=Y, side='left')
         self.frame_right_chat_show.pack(fill=X, side='top')
         self.frame_right_chat_input.pack(side='left')
         self.frame_right_chat_input_buttons.pack(side='left')
-    # def init_textbox(self):
+
+    def init_entrybox(self):
+        """Create an entry widget over left side frame to
+        to get username input. No other available text fields
+        should be used while application is waiting for username
+        input. So diable two other text fields.
+        """
+        # Disable text fields
+        self.txt_disp.configure(state='disabled')
+        self.txt_input.configure(state='disabled')
+        # Create and pack Entry widget
+        self.entry_username = Entry(self.frame_left)
+        self.username = StringVar()
+        self.username.set("Enter user name")
+        self.entry_username["textvariable"] = self.username
+        self.entry_username.bind('<Key-Return>', self.get_username)
+        self.entry_username.bind('<Button-1>', self.clear_username_field)
+        self.entry_username.pack()
+
+    def init_textbox(self):
+        """Initialise two text boxes, one for displaying
+        messages and another for getting user input.
+        Text boxes must be initialised first before initialising
+        entry widgets as textbox widgets are disabled in init_entrybox
+        """
+        self.txt_disp = st.ScrolledText(self.frame_right_chat_show, height=30, width=87, bg='forest green')
+        self.txt_input = Text(self.frame_right_chat_input, height=3, bg='lime green')
+        self.txt_input.bind('<Key-Return>', self.get_entry)
+        self.txt_disp.pack(side='left')
+        self.txt_input.pack()
+
+    def init_buttons(self):
+        """Initialise 'Send' and 'Clear' button widgets"""
+        self.btn_send = Button(self.frame_right_chat_input_buttons, text='Send', borderwidth=0, command=self.get_entry)
+        self.btn_clear = Button(self.frame_right_chat_input_buttons, text='Clear', borderwidth=0, command=self.clear_txt_input_field)
+        self.btn_send.pack()
+        self.btn_clear.pack()
+
+    def clear_username_field(self, *args):
+        self.entry_username.delete(0, END)
+        self.txt_input.focus()
+
+    def clear_txt_input_field(self, *args):
+        self.txt_input.delete('1.0', END)
+
+    def get_username(self, event):
+        """Fetch username from the entry widget and
+        send to the server. Disable the entry widget and
+        get the text_input widget back to normal state
+        """
+        username = self.username.get()
+        self.entry_username.delete(0, END)
+        self.entry_username.configure(state='disabled')
+        self.txt_input.configure(state='normal')
+        self.network.send_msg(username)
 
     def update(self, msg):
         """This method updates messages on display window"""
@@ -72,10 +125,12 @@ class GUI(object):
         # print(self.thread_name + ">> " + str(self.txt_input.get('1.0',END)))
         msg_snd = self.txt_input.get('1.0', END)
         msg_snd = msg_snd.strip('\n')
-        self.network.send_msg(msg_snd)
-        msg_snd = '<YOU> ' + msg_snd
-        self.update(msg_snd)
-        self.txt_input.delete('1.0', END)
+        if msg_snd:
+            self.network.send_msg(msg_snd)
+            msg_snd = '<YOU> ' + msg_snd
+            self.update(msg_snd)
+            self.txt_input.delete('1.0', END)
+            self.clear_txt_input_field()
 
     def get_msg(self, *arg):
         """ This method is being used by separate thread
@@ -170,9 +225,15 @@ def connection_thread(*args):
                 gui.network = network
             if not gui_flag:
                 gui = GUI(root, network)
+                gui.init_canvas()
+                gui.init_frame()
+                gui.init_textbox()
+                gui.init_buttons()
+                gui.init_entrybox()
             logging.log('Connected to the server')
             gui.update('Connected to the server')
-            gui.update('Enter your name.')
+            gui.entry_username.configure(state='normal')
+            #gui.update('Enter your name.')
             break
         except Exception as e:
             msg = "[Retry {}] {}".format(retry_count+1, e)
@@ -180,6 +241,12 @@ def connection_thread(*args):
             retry_count += 1
             if retry_count == 1:
                 gui = GUI(root, None)
+                gui.init_canvas()
+                gui.init_frame()
+                gui.init_textbox()
+                gui.init_buttons()
+                gui.init_entrybox()
+                gui.entry_username.configure(state='disabled')
                 gui.update("Failed to connect the server.\n"
                            "Started retrying.")
                 gui.update("Retry connecting...")
@@ -212,6 +279,8 @@ def main():
         srv_ip = sys.argv[1]
     root = Tk()  # initialize root window
     root.title('ChatRoom')
+    root.wm_maxsize(width=820, height=510)
+    root.resizable(False, False)
 
     threading._start_new_thread(connection_thread, (root, srv_ip))
     logging.log('Connection thread has been called')
@@ -231,4 +300,4 @@ if __name__ == "__main__":
         logging.logging_flag = True
         logging.validate_file()
     main()
-#TODO: client unable to detemine if server is alive after chat has been started.
+

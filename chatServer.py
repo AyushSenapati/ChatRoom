@@ -44,6 +44,7 @@ class Server(object):
 
     @staticmethod
     def show_help():
+        """Show available commands"""
         msg = '''
         AVAILABLE COMMANDS:
         \h          Print these information
@@ -59,6 +60,7 @@ class Server(object):
         print(msg)
 
     def show_config(self, type_='default'):
+        """Responsible for showing default or active server configurations"""
         if type_ in ('active', 'ACTIVE'):
             msg = '''
             Active configuration of the server :
@@ -66,16 +68,16 @@ class Server(object):
             HOST PORT = ''' + self.HOST_PORT + '''
             MAX USER ALLOWED = ''' + self.MAX_USR_ACCEPT 
             logging.log('Showing Active server configuration')
-            print(msg)
         else:
             msg = '''
             Default configuration of the server:
             HOST IP = 0.0.0.0
             HOST PORT = 8080
             MAX USER ALLOWED = 100'''
-            print(msg)
+        print(msg)
 
     def set_usr_config(self, parameters):
+        """Used to set custom server configuration"""
         if parameters:
             if sys.argv[1] in ('-h', '--help'):
                 self.show_help()
@@ -94,16 +96,19 @@ class Server(object):
                     'Enter max number of users server would accept : ')
 
     def update_active_users(self):
+        """Updates active users' name"""
         self.user_list = []
         for cli_obj in CLI_HASH.values():
             self.user_list.append(cli_obj.userName)
 
     @staticmethod
     def signal_handler(*args):
+        """Handles SIGINT/Ctrl-C signal"""
         print(' has been pressed.\n')
 
     @staticmethod
     def get_connection_stats():
+        """Shows server socket information"""
         msg = f"{'LOCAL_IP'}:{'LOCAL_PORT'}\t{'REMOTE_IP'}:" \
               f"{'REMOTE_PORT'}{'STATUS':>10}\t{'PID':>5}"
         print(msg)
@@ -115,6 +120,7 @@ class Server(object):
                     conn.raddr.port, conn.status, conn.pid))
 
     def srv_prompt(self):
+        """Provides a prompt to manage the server"""
         global TERMINATE
         while True:
             opt = input(Color.PURPLE +
@@ -211,7 +217,7 @@ class Server(object):
                     CLI_HASH.pop(cli_socket)
         except Exception as e:
             logging.log(e, msg_type="EXCEPTION")
-        print('\tDone')
+        print(Color.CYAN, '\tDone', Color.ENDC)
 
     def init(self):
         """
@@ -244,8 +250,10 @@ class Server(object):
             # Try to create server socket
             self.server.bind((self.HOST_IP, int(self.HOST_PORT)))
             self.server.listen(int(self.MAX_USR_ACCEPT))
-        except Exception as e:
-            logging.log(e)
+        except OSError as e:
+            tmp_msg = f"[Function: {inspect.stack()[0].function}] {e}"
+            print(tmp_msg)
+            logging.log(msg=str(tmp_msg), msg_type='EXCEPTION')
             print(
                 'Unable to bind HOST IP and PORT.\n'
                 'Please check your configuration')
@@ -274,7 +282,7 @@ class Server(object):
         if thread_cli.is_alive():
             logging.log(f'Time out reached. '
                         f'Terminating {threading.active_count()} forcefully')
-        print('\tDone')
+        print(Color.CYAN, '\tDone', Color.ENDC)
         print('\tServer and Client threads are exited successfully')
 
 
@@ -308,14 +316,19 @@ class Client(object):
                                    "> [IND] " + ' '.join(msg.split()[1:])
                         self.broadcast(msg_send, ind_flag=True)
                     except Exception as e:
-                        tmp_msg = f"[Function: {inspect.stack()[0].function}]" \
+                        tmp_msg = f"[Function: {inspect.stack()[0].function}]"\
                                   f"[User: {self.userName}] {e}"
                         logging.log(tmp_msg, msg_type="EXCEPTION")
                         tmp_msg = f"[Caller: {inspect.stack()[1].function}]" \
                                   f"[User: {self.userName}] {e}"
                         logging.log(tmp_msg, msg_type="EXCEPTION")
 
-    def get_shared_key(self):
+    def get_shared_key(self) -> type(tuple):
+        """
+        Generates unique 10bit symmetric key for each client,
+        calculates MD5 hash and encrypts the hash using RSA
+        and returns the shared_key and Encrypted(shared_key)
+        """
         # Generate unique symmetric 10bit key for each client
         passphrase = ''.join(random.sample(TOKEN_CHAR_LIST, 10))
 
@@ -343,8 +356,12 @@ class Client(object):
         # Get unique shared/symmetric key and encrypt
         # it with RSA public key received from the user.
         if self.PUBLIC_KEY:
+            # If public key is received from the user,
+            # generate symmetric key for that user.
             self.KEY, EnSharedKey = self.get_shared_key()
         else:
+            # If public key has not been received,
+            # terminate the unsecured connection.
             tmp_conn = "{}:{}".format(self.addr[0], self.addr[1])
             logging.log(
                     "Public key has not been received from [{}@{}]".format(
@@ -364,11 +381,10 @@ class Client(object):
         try:
             assert isinstance(EnSharedKey, tuple)
         except AssertionError as e:
-            logging.log(msg=e, msg_type='EXCEPTION')
+            logging.log(msg=e.msg, msg_type='EXCEPTION')
         EnSharedKey = pickle.dumps(EnSharedKey)
         self.conn.send(EnSharedKey)
 
-        # self.userName = self.conn.recv(100).decode()
         self.validate_user()
         
         msg = self.userName + " has joined the chatroom."
@@ -408,11 +424,11 @@ class Client(object):
                     pass
             except Exception as e:
                 tmp_msg = f"[Function: {inspect.stack()[0].function}]" \
-                          f"[User: {self.userName}] {e}"
+                          f"[User: {self.userName}] {e.msg}"
                 logging.log(tmp_msg, msg_type="EXCEPTION")
                 try:
                     tmp_msg = f"[Caller: {inspect.stack()[1].function}]" \
-                              f"[User: {self.userName}] {e}"
+                              f"[User: {self.userName}] {e.msg}"
                     logging.log(tmp_msg, msg_type="EXCEPTION")
                 except:
                     logging.log(
@@ -441,10 +457,10 @@ class Client(object):
                             AES_.encrypt(CLI_HASH[cli_socket].KEY, msg))
                 except Exception as e:
                     tmp_msg = f"[Function: {inspect.stack()[0].function}]" \
-                              f"[User: {self.userName}] {e}"
+                              f"[User: {self.userName}] {e.msg}"
                     logging.log(tmp_msg, msg_type="EXCEPTION")
                     tmp_msg = f"[Caller: {inspect.stack()[1].function}]" \
-                              f"[User: {self.userName}] {e}"
+                              f"[User: {self.userName}] {e.msg}"
                     logging.log(tmp_msg, msg_type="EXCEPTION")
                     cli_socket.close()
                     # If the link is broken, remove the client
@@ -469,7 +485,7 @@ class Client(object):
                 self.broadcast(msg)
             CLI_HASH.pop(self.conn)
             self.srv_obj.update_active_users()
-            print(self.srv_obj.user_list)
+            logging.log(f"Active users list: {self.srv_obj.user_list}")
             sys.exit()
 
 
@@ -499,8 +515,6 @@ if __name__ == "__main__":
         logging.validate_file()
         server = Server()
         server.init()
-        logging.stop('\tlogging has been stopped')
-        print('Done')
     except SystemExit as e:
         if e.code != 'EMERGENCY': 
             raise  # Normal exit, let unittest catch it
@@ -515,3 +529,6 @@ if __name__ == "__main__":
             'Please contact developers\nTerminating the process forcefully..')
         time.sleep(1)
         sys.exit(1)
+    finally:
+        logging.stop('\tlogging has been stopped')
+        print(Color.CYAN, 'Done', Color.ENDC)
