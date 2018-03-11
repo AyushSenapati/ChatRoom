@@ -11,6 +11,8 @@ import time
 from datetime import datetime
 from tkinter import *
 import tkinter.scrolledtext as st
+from tkinter import simpledialog
+from tkinter import messagebox
 
 # Local modules
 from APIs.logging import Log
@@ -30,8 +32,36 @@ class GUI(object):
 
     def init_canvas(self):
         """Initialise canvas"""
-        self.canvas = Canvas(self.master, width=730, height=600)
+        self.canvas = Canvas(self.master, width=730, height=650)
         self.canvas.pack(fill="both", expand=True)
+
+    def init_menubar(self):
+        def exit_():
+            response_ = messagebox.askyesno('WARNING', 'Are you sure?')
+            if response_:
+                self.master.destroy()
+        self.menubar = Menu(self.master)
+        self.master.config(menu=self.menubar)
+        self.file_menu = Menu(self.menubar)
+        self.edit_menu = Menu(self.menubar)
+        self.help_menu = Menu(self.menubar)
+        self.menubar.add_cascade(label="File", menu=self.file_menu)
+        self.menubar.add_cascade(label="Edit", menu=self.edit_menu)
+        self.menubar.add_cascade(label="Help", menu=self.help_menu)
+        # self.file_menu.add_command(label="Find People", command=self.findPeople)
+        # self.file_menu.add_separator()
+        self.file_menu.add_command(label='Quit', command=exit_)
+        self.edit_menu.add_command(label='Preferences', command=self.menubar_preferences)
+        self.help_menu.add_command(label='About ChatRoom', command=self.menubar_about)
+
+    def menubar_preferences(self):
+        pass
+
+    def menubar_about(self):
+        messagebox.showinfo(
+                'About', 'Chat Room v1.0.0\nAuthor: ' +\
+                'AyushSenapati <a.p.senapati008@gmail.com>\n\n' +\
+                'Report bugs at -\ngithub.com/AyushSenapati/')
 
     def init_frame(self):
         """Initialise 2 frames, one at the left for entry widget
@@ -45,8 +75,8 @@ class GUI(object):
         self.frame_right = Frame(self.canvas, width=500)
         # Create and place 3 frames over Right one.
         self.frame_right_chat_show = Frame(self.frame_right, borderwidth=2, relief=GROOVE)
-        self.frame_right_chat_input = Frame(self.frame_right, width=460, borderwidth=2, relief=GROOVE)
-        self.frame_right_chat_input_buttons = Frame(self.frame_right, width=40, borderwidth=2, relief=GROOVE)
+        self.frame_right_chat_input = Frame(self.frame_right, width=460, height=30, borderwidth=2, relief=GROOVE)
+        self.frame_right_chat_input_buttons = Frame(self.frame_right, width=40, height=30, borderwidth=2, relief=GROOVE)
 
         self.frame_left.pack(fill=Y, side='left')
         self.frame_right.pack(fill=Y, side='left')
@@ -72,6 +102,17 @@ class GUI(object):
         self.entry_username.bind('<Button-1>', self.clear_username_field)
         self.entry_username.pack()
 
+    def prompt_username(self):
+        username = simpledialog.askstring("User Information", "Enter user name")
+        if username:
+            self.network.send_msg(username)
+            self.txt_input.focus()
+        else:
+            self.update("No username provided")
+            self.update("Exiting application")
+            time.sleep(3)
+            self.master.destroy()
+
     def init_textbox(self):
         """Initialise two text boxes, one for displaying
         messages and another for getting user input.
@@ -92,7 +133,7 @@ class GUI(object):
         self.btn_clear.pack()
 
     def clear_username_field(self, *args):
-        self.entry_username.delete(0, END)
+        #self.entry_username.delete(0, END)
         self.txt_input.focus()
 
     def clear_txt_input_field(self, *args):
@@ -125,7 +166,7 @@ class GUI(object):
         # print(self.thread_name + ">> " + str(self.txt_input.get('1.0',END)))
         msg_snd = self.txt_input.get('1.0', END)
         msg_snd = msg_snd.strip('\n')
-        if msg_snd:
+        if msg_snd and self.network:
             self.network.send_msg(msg_snd)
             msg_snd = '<YOU> ' + msg_snd
             self.update(msg_snd)
@@ -229,11 +270,11 @@ def connection_thread(*args):
                 gui.init_frame()
                 gui.init_textbox()
                 gui.init_buttons()
-                gui.init_entrybox()
+                gui.init_menubar()
+                #gui.init_entrybox()
             logging.log('Connected to the server')
             gui.update('Connected to the server')
-            gui.entry_username.configure(state='normal')
-            #gui.update('Enter your name.')
+            #gui.entry_username.configure(state='normal')
             break
         except Exception as e:
             msg = "[Retry {}] {}".format(retry_count+1, e)
@@ -245,8 +286,9 @@ def connection_thread(*args):
                 gui.init_frame()
                 gui.init_textbox()
                 gui.init_buttons()
-                gui.init_entrybox()
-                gui.entry_username.configure(state='disabled')
+                gui.init_menubar()
+                #gui.init_entrybox()
+                #gui.entry_username.configure(state='disabled')
                 gui.update("Failed to connect the server.\n"
                            "Started retrying.")
                 gui.update("Retry connecting...")
@@ -257,17 +299,19 @@ def connection_thread(*args):
                 gui_flag = True
             elif retry_count == 5:
                 gui.update("Retry limit exceeded.\n"
-                           "Unable to connect the server.\n"
-                           "Program will automatically exit after 5 sec.")
-                time.sleep(5)
+                           "Unable to connect the server.\n")
+                #           "Program will automatically exit after 5 sec.")
+                #time.sleep(5)
                 gui_flag = True
-                root.destroy()
+                #root.destroy()
+                return
     logging.log(
         'New thread has been initialized to fetch data from the server')
     # threading._start_new_thread(network.genRSA, ())
     rsa_thread = threading.Thread(target=network.genRSA, args=())
     rsa_thread.start()
     rsa_thread.join()
+    gui.prompt_username()
     # Start a new thread to fetch
     # messages from the server continuously
     threading._start_new_thread(gui.get_msg, ())
@@ -279,7 +323,7 @@ def main():
         srv_ip = sys.argv[1]
     root = Tk()  # initialize root window
     root.title('ChatRoom')
-    root.wm_maxsize(width=820, height=510)
+    root.wm_maxsize(width=830, height=515)
     root.resizable(False, False)
 
     threading._start_new_thread(connection_thread, (root, srv_ip))

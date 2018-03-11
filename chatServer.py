@@ -8,7 +8,8 @@ import signal
 import socket
 import sys
 import threading
-from datetime import datetime, time
+from datetime import datetime
+import time
 
 # Third party libraries
 try:
@@ -16,7 +17,7 @@ try:
     import pickle
     from Crypto.Random import random
 except ImportError as e:
-    print(e.msg)
+    print(e)
     print('[psutil, pickle, pycrypt] packages must '
           'be installed before running the application')
     print('Exiting application..')
@@ -381,7 +382,7 @@ class Client(object):
         try:
             assert isinstance(EnSharedKey, tuple)
         except AssertionError as e:
-            logging.log(msg=e.msg, msg_type='EXCEPTION')
+            logging.log(msg=e, msg_type='EXCEPTION')
         EnSharedKey = pickle.dumps(EnSharedKey)
         self.conn.send(EnSharedKey)
 
@@ -424,11 +425,11 @@ class Client(object):
                     pass
             except Exception as e:
                 tmp_msg = f"[Function: {inspect.stack()[0].function}]" \
-                          f"[User: {self.userName}] {e.msg}"
+                          f"[User: {self.userName}] {e}"
                 logging.log(tmp_msg, msg_type="EXCEPTION")
                 try:
                     tmp_msg = f"[Caller: {inspect.stack()[1].function}]" \
-                              f"[User: {self.userName}] {e.msg}"
+                              f"[User: {self.userName}] {e}"
                     logging.log(tmp_msg, msg_type="EXCEPTION")
                 except:
                     logging.log(
@@ -457,10 +458,10 @@ class Client(object):
                             AES_.encrypt(CLI_HASH[cli_socket].KEY, msg))
                 except Exception as e:
                     tmp_msg = f"[Function: {inspect.stack()[0].function}]" \
-                              f"[User: {self.userName}] {e.msg}"
+                              f"[User: {self.userName}] {e}"
                     logging.log(tmp_msg, msg_type="EXCEPTION")
                     tmp_msg = f"[Caller: {inspect.stack()[1].function}]" \
-                              f"[User: {self.userName}] {e.msg}"
+                              f"[User: {self.userName}] {e}"
                     logging.log(tmp_msg, msg_type="EXCEPTION")
                     cli_socket.close()
                     # If the link is broken, remove the client
@@ -499,6 +500,11 @@ if __name__ == "__main__":
         If it's a Macintosh, application must start by root
         user to get connection information.
         """
+        logging = Log(f_name='server_chatroom_' +
+                             datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+        logging.logging_flag = True
+        logging.silent_flag = True
+        logging.validate_file()
         # Checks if the OS is Linux
         if os.uname().sysname != 'Linux':
             # Checks if application is running by root user
@@ -507,12 +513,10 @@ if __name__ == "__main__":
                     Color.WARNING + "WARNING: Program must be running "
                                     "with root user to monitor sockets." + 
                     Color.ENDC)
+                logging.log(
+                        "Application was not started with root privilege",
+                        msg_type="WARNING")
                 sys.exit(0)
-        logging = Log(f_name='server_chatroom_' +
-                             datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
-        logging.logging_flag = True
-        logging.silent_flag = True
-        logging.validate_file()
         server = Server()
         server.init()
     except SystemExit as e:
@@ -530,5 +534,8 @@ if __name__ == "__main__":
         time.sleep(1)
         sys.exit(1)
     finally:
-        logging.stop('\tlogging has been stopped')
+        msg = 'logging has been stopped.'
+        logging.log(msg)
+        print(msg)
         print(Color.CYAN, 'Done', Color.ENDC)
+
